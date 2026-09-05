@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+# Create the low-privilege service account if it does not already exist.
+getent group share-disk >/dev/null 2>&1 || groupadd --system share-disk
+getent passwd share-disk >/dev/null 2>&1 || \
+    useradd --system --gid share-disk --no-create-home \
+        --home-dir /var/lib/share-disk \
+        --shell /usr/sbin/nologin \
+        share-disk
+
+# Ensure the writable data and config roots exist with restrictive ownership
+# before the service starts. These directories are not owned by the package so
+# dpkg leaves them intact on remove (data preservation). Purging is the only
+# explicit, destructive operation and is handled in postrm.
+mkdir -p /var/lib/share-disk/objects /etc/share-disk
+chown -R share-disk:share-disk /var/lib/share-disk
+chmod 0700 /var/lib/share-disk /var/lib/share-disk/objects
+chmod 0755 /etc/share-disk
+
+#DEBHELPER#
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    deb-systemd-helper enable share-disk-agent.service >/dev/null 2>&1 || true
+    deb-systemd-invoke start share-disk-agent.service || true
+fi
+
+exit 0

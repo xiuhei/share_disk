@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Share Disk LAN</string>
+    <string name="brand">SHARE DISK</string>
+    <string name="title">局域网文件柜</string>
+    <string name="subtitle">Android 与 Ubuntu 之间直接传输，Docker 只负责身份认证。</string>
+    <string name="control_url_hint">控制服务，例如 http://192.168.1.10:8080</string>
+    <string name="agent_url_hint">Ubuntu Agent，例如 http://192.168.1.10:9090</string>
+    <string name="discover_agents">发现 Ubuntu Agent</string>
+    <string name="account_hint">账号</string>
+    <string name="password_hint">密码</string>
+    <string name="bootstrap_hint">首次初始化令牌（仅第一次需要）</string>
+    <string name="bootstrap">初始化</string>
+    <string name="login">登录</string>
+    <string name="logout">注销</string>
+    <string name="not_connected">尚未连接</string>
+    <string name="pick_upload">选择并上传</string>
+    <string name="refresh_files">刷新文件</string>
+    <string name="ubuntu_files">Ubuntu 文件</string>
+    <string name="trash">回收站</string>
+    <string name="settings">连接设置</string>
+    <string name="connection_and_account">连接与账号</string>
+    <string name="tab_files">文件</string>
+    <string name="tab_transfers">传输</string>
+    <string name="tab_devices">设备</string>
+    <string name="tab_trash">回收站</string>
+    <string name="refresh_short">刷新</string>
+    <string name="search_files">搜索文件名</string>
+    <string name="create_folder">新建文件夹</string>
+    <string name="all_files">全部文件</string>
+    <string name="share_management">分享管理</string>
+    <string name="background_transfers">Android 后台传输</string>
+    <string name="no_background_transfers">暂无后台传输任务</string>
+    <string name="replica_tasks">跨设备复制任务</string>
+    <string name="account_devices">账号设备</string>
+    <string name="trash_help">可恢复误删文件，彻底删除后不可撤销。</string>
+</resources>

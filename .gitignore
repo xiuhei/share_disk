@@ -1,0 +1,57 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+/conf/server.json
+/conf/.runtime/
+
+
+# Go build and test outputs
+/bin/
+/dist/
+/build/
+/coverage/
+*.test
+*.out
+coverage*.txt
+coverage*.html
+/vendor/
+
+# Generated runtime data (never source packages)
+/data/
+/var/
+/logs/
+/tmp/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.part
+
+# Android and native build outputs
+.gradle/
+local.properties
+*.apk
+*.aab
+.externalNativeBuild/
+.cxx/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.~*
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

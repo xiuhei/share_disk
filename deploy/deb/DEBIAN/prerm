@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+#DEBHELPER#
+
+if [ -d /run/systemd/system ]; then
+    deb-systemd-invoke stop share-disk-agent.service >/dev/null 2>&1 || true
+    deb-systemd-helper disable share-disk-agent.service >/dev/null 2>&1 || true
+fi
+
+exit 0

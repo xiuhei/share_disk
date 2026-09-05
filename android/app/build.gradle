@@ -1,0 +1,55 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.sharedisk.lan"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.sharedisk.lan"
+        minSdk 29
+        targetSdk 35
+        versionCode 3
+        versionName "0.3.0-lan"
+    }
+
+    def releaseKeystore = System.getenv("SHARE_DISK_ANDROID_KEYSTORE")
+    def releaseKeystorePassword = System.getenv("SHARE_DISK_ANDROID_KEYSTORE_PASSWORD")
+    def releaseKeyAlias = System.getenv("SHARE_DISK_ANDROID_KEY_ALIAS")
+    def releaseKeyPassword = System.getenv("SHARE_DISK_ANDROID_KEY_PASSWORD")
+
+    signingConfigs {
+        if (releaseKeystore && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword) {
+            release {
+                storeFile file(releaseKeystore)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
+        }
+        release {
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "androidx.work:work-runtime:2.9.1"
+}

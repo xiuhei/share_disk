@@ -1,0 +1,65 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+dist/
+build/
+coverage/
+
+# Data directories
+data/
+*.db
+*.db-journal
+*.db-wal
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Secrets
+secrets/
+*.secret
+*.key
+*.pem
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Test files
+test/
+*_test.go
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+Jenkinsfile
+
+# Dependencies (will be downloaded in container)
+vendor/

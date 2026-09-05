@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/forest</item>
+        <item name="android:navigationBarColor">@color/ink</item>
+        <item name="android:statusBarColor">@color/ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
+
+    <style name="PrimaryButton" parent="android:style/Widget.Material.Button">
+        <item name="android:layout_height">48dp</item>
+        <item name="android:backgroundTint">@color/forest</item>
+        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="SecondaryButton" parent="android:style/Widget.Material.Button">
+        <item name="android:layout_height">48dp</item>
+        <item name="android:backgroundTint">@color/mint</item>
+        <item name="android:textColor">@color/forest_dark</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="TabButton" parent="SecondaryButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:minWidth">88dp</item>
+        <item name="android:layout_marginEnd">8dp</item>
+    </style>
+
+    <style name="SectionTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="AppField" parent="android:style/Widget.Material.EditText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">52dp</item>
+        <item name="android:backgroundTint">@color/forest</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textColorHint">@color/muted</item>
+    </style>
+</resources>

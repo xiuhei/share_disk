@@ -1,0 +1,48 @@
+[Unit]
+Description=Share Disk Ubuntu storage Agent
+Documentation=https://github.com/share-disk/share-disk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=share-disk
+Group=share-disk
+
+# The Agent is the sole writer of local object bytes and SQLite metadata.
+EnvironmentFile=/etc/share-disk/agent.env
+
+ExecStart=/usr/lib/share-disk/share-disk-agent
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=30s
+
+# /run/share-disk (Unix socket) and /var/lib/share-disk (SQLite + objects) are
+# created and owned by the service account.
+RuntimeDirectory=share-disk
+RuntimeDirectoryMode=0700
+StateDirectory=share-disk
+ConfigurationDirectory=share-disk
+
+# Security hardening: the agent needs no privileges and must not be able to
+# read arbitrary host data or retain privileges.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+PrivateDevices=true
+SystemCallArchitectures=native
+
+# The agent streams large files; raise the default descriptor limit.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

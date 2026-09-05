@@ -1,0 +1,108 @@
+# Share Disk Compose configuration
+# This is the production-ready Compose configuration for M2-D.
+name: share-disk
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: deploy/docker/Dockerfile
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1770
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  networks:
+    - backend
+  volumes:
+    - ../../conf/.runtime/server.json:/app/conf/server.json:ro
+  stop_grace_period: 40s
+
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?start with deploy/compose/server.py}
+      POSTGRES_USER: ${POSTGRES_USER:?start with deploy/compose/server.py}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?start with deploy/compose/server.py}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  db-migrate:
+    <<: *app
+    image: "${IMAGE_PREFIX:-share-disk}/db-migrate:${IMAGE_TAG:-latest}"
+    restart: "no"
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: db-migrate
+    command: [up]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  control-server:
+    <<: *app
+    image: "${IMAGE_PREFIX:-share-disk}/control-server:${IMAGE_TAG:-latest}"
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: control-server
+    networks:
+      - backend
+      - edge
+    expose:
+      - "8080"
+    ports:
+      # M2-D local/E2E access only. Production must place the chosen TLS
+      # reverse proxy in front and keep this binding private.
+      - "${CONTROL_SERVER_BIND_ADDRESS:?start with deploy/compose/server.py}:${CONTROL_SERVER_PORT:?start with deploy/compose/server.py}:${CONTROL_SERVER_PORT}"
+    healthcheck:
+      test: [CMD-SHELL, "/app/healthcheck healthcheck --url=http://127.0.0.1:${CONTROL_SERVER_PORT}/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+
+  control-worker:
+    <<: *app
+    image: "${IMAGE_PREFIX:-share-disk}/control-worker:${IMAGE_TAG:-latest}"
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: control-worker
+    healthcheck:
+      test: [CMD, /app/healthcheck, dbcheck]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+
+networks:
+  backend:
+    internal: true
+  # Published ports on an `internal` bridge are not reachable from the host on
+  # all supported Docker/iptables combinations. Keep the database on the
+  # internal backend and attach only the HTTP server to this ingress network.
+  edge: {}
+
+volumes:
+  postgres_data:

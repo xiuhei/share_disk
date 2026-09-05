@@ -1,0 +1,20 @@
+Package: share-disk
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: @ARCH@
+Essential: no
+Depends: init-system-helpers
+Installed-Size: @INSTALLED_SIZE@
+Maintainer: Share Disk <maintainer@share-disk.local>
+Homepage: https://github.com/share-disk/share-disk
+Description: Share Disk Ubuntu storage agent and CLI
+ Share Disk is a personal distributed cloud drive that keeps file contents on
+ user devices. This package installs the Ubuntu storage Agent
+ (share-disk-agent, managed by systemd) and the command line interface
+ (share-disk-cli).
+ .
+ The Agent is the sole writer of local object bytes and SQLite metadata, and
+ exposes a local Unix-socket IPC for the CLI plus an opt-in authenticated LAN
+ data plane for Android uploads/downloads. File contents are never uploaded to
+ the control server.

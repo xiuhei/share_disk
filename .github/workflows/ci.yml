@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.6'
+        cache: true
+
+    - name: Install protoc
+      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+    - name: Install development tools
+      run: make tools
+
+    - name: Check formatting
+      run: make fmt-check
+
+    - name: Run linters
+      run: make lint
+
+    - name: Run unit tests
+      run: make test
+
+    - name: Run race tests
+      run: make test-race
+
+    - name: Run contract tests
+      run: make contract
+
+    - name: Run vulnerability check
+      run: make vuln
+
+    - name: Build binaries
+      run: make build
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: share_disk
+          POSTGRES_PASSWORD: share_disk
+          POSTGRES_DB: share_disk_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.6'
+        cache: true
+
+    - name: Run integration tests
+      run: make test-int
+      env:
+        SHARE_DISK_TEST_POSTGRESQL_URL: postgres://share_disk:share_disk@localhost:5432/share_disk_test?sslmode=disable
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: [ test, integration ]
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.6'
+
+    - name: Build binaries
+      run: make build
+
+    - name: Upload binaries
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries-${{ matrix.os }}
+        path: bin/

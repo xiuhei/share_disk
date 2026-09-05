@@ -1,0 +1,1338 @@
+openapi: 3.1.0
+info:
+  title: Share Disk Control API
+  description: |
+    Control plane API for the personal distributed cloud drive system.
+    This API handles authentication, device management, file catalog, transfers, and synchronization.
+  version: 0.1.0
+  contact:
+    name: Share Disk Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /livez:
+    get:
+      summary: Liveness probe
+      description: Returns 200 if the process is running
+      operationId: livez
+      security: []
+      tags:
+        - health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Returns 200 if the service is ready to accept requests
+      operationId: readyz
+      security: []
+      tags:
+        - health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /version:
+    get:
+      summary: Version information
+      description: Returns version and build information
+      operationId: getVersion
+      security: []
+      tags:
+        - system
+      responses:
+        '200':
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+
+  /v1/auth/bootstrap:
+    post:
+      summary: Bootstrap first account
+      description: |
+        Creates the first account in a fresh installation.
+        This endpoint can only be used once and requires a bootstrap token.
+      operationId: bootstrap
+      security: []
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - bootstrap_token
+                - account
+                - password
+              properties:
+                bootstrap_token:
+                  type: string
+                  description: One-time bootstrap token
+                account:
+                  type: string
+                  description: Account identifier (email or username)
+                password:
+                  type: string
+                  format: password
+                  description: Account password
+      responses:
+        '201':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Account already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '410':
+          description: Bootstrap already completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/auth/login:
+    post:
+      summary: Login
+      description: Authenticates a device and returns access/refresh tokens
+      operationId: login
+      security: []
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - account
+                - password
+                - device_id
+              properties:
+                account:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                device_id:
+                  type: string
+                  format: uuid
+                  description: Device identifier
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/auth/enroll:
+    post:
+      summary: Enroll a new device into an existing account
+      description: Authenticates account credentials and issues a session bound to a stable client peer identifier.
+      operationId: enrollDevice
+      security: []
+      tags: [auth, devices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrollDeviceRequest' }
+      responses:
+        '201':
+          description: Device enrolled and independent session issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          description: Invalid account credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/auth/refresh:
+    post:
+      summary: Refresh access token
+      description: Refreshes an expired access token using a refresh token
+      operationId: refreshToken
+      security: []
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/auth/logout:
+    post:
+      summary: Logout
+      description: Revokes the current session
+      operationId: logout
+      tags:
+        - auth
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/account:
+    get:
+      summary: Current account profile
+      operationId: getAccount
+      tags: [account]
+      responses:
+        '200':
+          description: Safe account profile without authentication secrets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account]
+                properties:
+                  account: { $ref: '#/components/schemas/AccountSummary' }
+
+  /v1/account/password:
+    patch:
+      summary: Change current account password
+      description: Verifies the current password, replaces its Argon2id hash, and revokes every other session.
+      operationId: changePassword
+      tags: [account, auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200': { description: Password changed }
+        '400':
+          description: Invalid password policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Current password is incorrect
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/auth/jwks:
+    get:
+      summary: Access-token verification keys
+      description: >-
+        Returns the public key(s) used to verify access tokens. Agents fetch
+        this to validate tokens without ever receiving the server's private
+        signing key.
+      operationId: getJwks
+      security: []
+      tags:
+        - auth
+      responses:
+        '200':
+          description: JSON Web Key Set
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - keys
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+
+  /v1/devices/register:
+    post:
+      summary: Register or resume a device identity
+      operationId: registerDevice
+      tags: [devices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceRequest'
+      responses:
+        '201':
+          description: Independent device session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '409':
+          description: Peer identity belongs to another account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/devices:
+    get:
+      summary: List active account devices available for coordination
+      operationId: listDevices
+      tags: [devices]
+      responses:
+        '200':
+          description: Account device summaries without keys or peer identifiers
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeviceSummary' }
+
+  /v1/devices/{device_id}:
+    parameters:
+      - name: device_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      summary: Deregister an account device and revoke its sessions
+      operationId: deregisterDevice
+      tags: [devices]
+      responses:
+        '204': { description: Device deregistered }
+        '404':
+          description: Device not found in this account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/devices/heartbeat:
+    post:
+      summary: Record authenticated device liveness
+      operationId: deviceHeartbeat
+      tags: [devices]
+      responses:
+        '204': { description: Liveness recorded }
+        '401':
+          description: Session is not active
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/catalog/files:
+    get:
+      summary: List account-wide active files
+      operationId: listCatalogFiles
+      tags: [catalog]
+      parameters:
+        - { name: folder_id, in: query, schema: { type: string, format: uuid } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [name_asc, name_desc, newest, oldest, size_desc, size_asc] } }
+      responses:
+        '200':
+          description: Unified active catalog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnifiedFileList' }
+
+  /v1/catalog/files/{file_id}:
+    parameters:
+      - name: file_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Get unified file details and selected replica
+      operationId: getCatalogFile
+      tags: [catalog]
+      responses:
+        '200':
+          description: File details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnifiedFile' }
+
+  /v1/catalog/files/move:
+    post:
+      summary: Move one or more files to a folder
+      operationId: moveCatalogFiles
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_ids, folder_id]
+              properties:
+                file_ids: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                folder_id: { type: string, format: uuid }
+      responses:
+        '204': { description: Files moved }
+
+  /v1/catalog/files/actions:
+    post:
+      summary: Apply an authoritative lifecycle action and queue it to every replica
+      operationId: applyCatalogActions
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operation_id, file_ids, action]
+              properties:
+                operation_id: { type: string }
+                file_ids: { type: array, minItems: 1, maxItems: 500, items: { type: string, format: uuid } }
+                action: { type: string, enum: [rename, trash, restore, purge] }
+                name: { type: string }
+      responses:
+        '200':
+          description: Updated files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnifiedFileList' }
+
+  /v1/catalog/folders:
+    get:
+      summary: List all active account folders
+      operationId: listFolders
+      tags: [catalog]
+      responses:
+        '200':
+          description: Folder tree records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders: { type: array, items: { $ref: '#/components/schemas/Folder' } }
+    post:
+      summary: Create a folder
+      operationId: createFolder
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                parent_id: { type: string, format: uuid }
+                name: { type: string }
+      responses:
+        '201':
+          description: Folder created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+
+  /v1/catalog/folders/{folder_id}:
+    parameters:
+      - name: folder_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      summary: Rename a folder
+      operationId: renameFolder
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties: { name: { type: string } }
+      responses:
+        '200':
+          description: Folder renamed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Folder' }
+    delete:
+      summary: Delete an empty folder
+      operationId: deleteFolder
+      tags: [catalog]
+      responses:
+        '204': { description: Folder deleted }
+
+  /v1/shares:
+    get:
+      summary: List recent account shares
+      operationId: listShares
+      tags: [catalog]
+      responses:
+        '200':
+          description: Recent shares, including revoked and expired records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shares]
+                properties:
+                  shares: { type: array, items: { $ref: '#/components/schemas/Share' } }
+    post:
+      summary: Create a public download share for an active file
+      operationId: createShare
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file_id]
+              properties:
+                file_id: { type: string, format: uuid }
+                expires_in_seconds: { type: integer, minimum: 1, maximum: 2592000, default: 86400 }
+                max_downloads: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '201':
+          description: Share created; token is only returned at creation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Share' }
+
+  /v1/shares/{share_id}:
+    parameters:
+      - name: share_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      summary: Revoke a share
+      operationId: revokeShare
+      tags: [catalog]
+      responses:
+        '204': { description: Share revoked }
+
+  /v1/public/shares/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      security: []
+      summary: Resolve a share to its file, Agent content URL and short-lived bearer token
+      operationId: resolveShare
+      tags: [catalog]
+      responses:
+        '200':
+          description: Resolved downloadable share
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [share, file, content_url, access_token, access_token_expires_in]
+                properties:
+                  share: { $ref: '#/components/schemas/Share' }
+                  file: { $ref: '#/components/schemas/UnifiedFile' }
+                  content_url: { type: string, format: uri }
+                  access_token: { type: string }
+                  access_token_expires_in: { type: integer }
+        '404': { description: Share not found }
+        '410': { description: Share expired, revoked, or exhausted }
+
+  /v1/catalog/trash:
+    get:
+      summary: List account-wide trash
+      operationId: listCatalogTrash
+      tags: [catalog]
+      responses:
+        '200':
+          description: Unified recoverable catalog entries
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnifiedFileList' }
+
+  /v1/catalog/files/register:
+    post:
+      summary: Register a verified Agent-local file and replica
+      operationId: registerCatalogFile
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterCatalogFileRequest' }
+      responses:
+        '200':
+          description: Registered or existing unified file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnifiedFile' }
+        '409':
+          description: Active account filename conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/catalog/lifecycle:
+    post:
+      summary: Apply a committed origin-Agent lifecycle mutation
+      operationId: reportCatalogLifecycle
+      tags: [catalog]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogLifecycleReport' }
+      responses:
+        '200':
+          description: Updated unified file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UnifiedFile' }
+        '404':
+          description: File is not owned by the reporting Agent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/transfers/:
+    get:
+      summary: List account transfer tasks
+      operationId: listTransfers
+      tags: [transfers]
+      parameters:
+        - { name: state, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }
+      responses:
+        '200':
+          description: Transfer tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [transfers]
+                properties:
+                  transfers: { type: array, items: { $ref: '#/components/schemas/TransferTask' } }
+    post:
+      summary: Schedule a verified file replica on another account device
+      operationId: createTransfer
+      tags: [transfers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTransferRequest' }
+      responses:
+        '201':
+          description: Transfer task created or existing live task returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferTask' }
+        '409':
+          description: Target already contains the replica or no source is ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/transfers/claim:
+    post:
+      summary: Lease the next queued task to the authenticated target Agent
+      operationId: claimTransfer
+      tags: [transfers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                lease_seconds: { type: integer, minimum: 1, maximum: 86400, default: 120 }
+      responses:
+        '200':
+          description: Complete source and content assignment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferAssignment' }
+        '204': { description: No task is currently claimable }
+
+  /v1/transfers/{task_id}/state:
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: Report an optimistic transfer state transition
+      operationId: updateTransferState
+      tags: [transfers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferStateRequest' }
+      responses:
+        '204': { description: State accepted }
+        '409':
+          description: Lease, version, or transition conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/transfers/{task_id}/complete:
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: Atomically complete a task and register the verified target replica
+      operationId: completeTransfer
+      tags: [transfers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompleteTransferRequest' }
+      responses:
+        '204': { description: Replica registered and task completed }
+        '409':
+          description: Lease, version, state, or content identity conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/transfers/{task_id}/fail:
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: Release a failed attempt into bounded retry or permanent failure
+      operationId: failTransfer
+      tags: [transfers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected_version]
+              properties:
+                expected_version: { type: integer, minimum: 1 }
+      responses:
+        '204': { description: Attempt failure recorded }
+
+  /v1/transfers/{task_id}/cancel:
+    parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: Cancel an account transfer task
+      operationId: cancelTransfer
+      tags: [transfers]
+      responses:
+        '204': { description: Task canceled or already terminal }
+
+  /v1/device-commands/claim:
+    post:
+      summary: Lease the next offline-capable coordination command for this device
+      operationId: claimDeviceCommand
+      tags: [devices]
+      responses:
+        '200':
+          description: Device command
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceCommand' }
+        '204': { description: No command available }
+
+  /v1/device-commands/{command_id}/finish:
+    parameters:
+      - name: command_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: Complete or retry a leased device command
+      operationId: finishDeviceCommand
+      tags: [devices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [success]
+              properties:
+                success: { type: boolean }
+                error: { type: string }
+      responses:
+        '204': { description: Command result recorded }
+
+  /v1/lan/files:
+    get:
+      summary: List active LAN files
+      operationId: listLanFiles
+      tags: [lan-files]
+      responses:
+        '200':
+          description: Active files owned by the authenticated account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LANFileList'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/lan/files/{file_id}:
+    parameters:
+      - $ref: '#/components/parameters/LANFileID'
+    patch:
+      summary: Rename an active LAN file
+      operationId: renameLanFile
+      tags: [lan-files]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 255 }
+      responses:
+        '200':
+          description: Renamed logical file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LANFile' }
+        '409':
+          description: Active normalized name already exists or state changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      summary: Move an active LAN file to trash
+      operationId: trashLanFile
+      tags: [lan-files]
+      responses:
+        '200':
+          description: Recoverable trash record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LANFile' }
+
+  /v1/lan/files/{file_id}/content:
+    parameters:
+      - $ref: '#/components/parameters/LANFileID'
+    get:
+      summary: Download verified LAN file content with HTTP Range support
+      operationId: downloadLanFile
+      tags: [lan-files]
+      responses:
+        '200': { description: Complete verified object }
+        '206': { description: Requested byte range }
+        '404':
+          description: File absent, trashed, purging, or owned by another account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/lan/trash:
+    get:
+      summary: List LAN trash
+      operationId: listLanTrash
+      tags: [lan-trash]
+      responses:
+        '200':
+          description: Recoverable and purging files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LANFileList' }
+
+  /v1/lan/trash/{file_id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/LANFileID'
+    post:
+      summary: Restore a trashed LAN file
+      operationId: restoreLanFile
+      tags: [lan-trash]
+      responses:
+        '200':
+          description: Restored active file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LANFile' }
+        '409':
+          description: Active normalized name already exists or purge started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/lan/trash/{file_id}:
+    parameters:
+      - $ref: '#/components/parameters/LANFileID'
+    delete:
+      summary: Permanently delete a trashed LAN file
+      description: Object bytes are reclaimed only when no other logical file references the object.
+      operationId: purgeLanFile
+      tags: [lan-trash]
+      responses:
+        '204': { description: Permanently deleted }
+        '409':
+          description: File is not in a purgeable state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    LANFileID:
+      name: file_id
+      in: path
+      required: true
+      schema: { type: string, minLength: 1 }
+
+  schemas:
+    Health:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/HealthCheck'
+        details:
+          type: object
+          additionalProperties:
+            type: string
+
+    HealthCheck:
+      type: object
+      required:
+        - name
+        - status
+        - timestamp
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [UP, DOWN]
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    Version:
+      type: object
+      required:
+        - version
+        - commit
+        - build_time
+        - go_version
+        - os
+        - arch
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        build_time:
+          type: string
+          format: date-time
+        go_version:
+          type: string
+        os:
+          type: string
+        arch:
+          type: string
+
+    AuthResponse:
+      type: object
+      required:
+        - access_token
+        - refresh_token
+        - expires_in
+        - token_type
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        token_type:
+          type: string
+          example: Bearer
+        user_id: { type: string, format: uuid }
+        device_id: { type: string, format: uuid }
+
+    AccountSummary:
+      type: object
+      required: [id, account, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        account: { type: string }
+        status: { type: string, enum: [active] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password, minLength: 1 }
+        new_password: { type: string, format: password, minLength: 8 }
+
+    RegisterDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [name, platform, peer_id]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        platform: { type: string, minLength: 1, maxLength: 32 }
+        public_key: { type: string, contentEncoding: base64 }
+        peer_id: { type: string, minLength: 1, maxLength: 255 }
+
+    EnrollDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [account, password, name, platform, peer_id]
+      properties:
+        account: { type: string, minLength: 1 }
+        password: { type: string, format: password, minLength: 1 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        platform: { type: string, minLength: 1, maxLength: 32 }
+        peer_id: { type: string, minLength: 1, maxLength: 255 }
+
+    DeviceSummary:
+      type: object
+      required: [id, name, platform, status]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        platform: { type: string }
+        status: { type: string, enum: [active] }
+        last_seen_at: { type: [string, 'null'], format: date-time }
+
+    RegisterCatalogFileRequest:
+      type: object
+      additionalProperties: false
+      required: [local_file_id, name, mime, size, sha256, endpoint]
+      properties:
+        local_file_id: { type: string, minLength: 1, maxLength: 64 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        mime: { type: string }
+        size: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+
+    CatalogLifecycleReport:
+      type: object
+      additionalProperties: false
+      required: [operation_id, local_file_id, action]
+      properties:
+        operation_id: { type: string, minLength: 1, maxLength: 128 }
+        local_file_id: { type: string, minLength: 1, maxLength: 64 }
+        action: { type: string, enum: [rename, trash, restore, purge] }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        purge_after: { type: [string, 'null'], format: date-time }
+
+    UnifiedFile:
+      type: object
+      required: [id, folder_id, local_file_id, name, mime, size, sha256, status, version, origin_device_id, origin_device_name, origin_endpoint, replica_endpoint, content_local_file_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        folder_id: { type: string, format: uuid }
+        local_file_id: { type: string }
+        name: { type: string }
+        mime: { type: string }
+        size: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        status: { type: string, enum: [active, trashed, purged] }
+        version: { type: integer, minimum: 1 }
+        origin_device_id: { type: string, format: uuid }
+        origin_device_name: { type: string }
+        origin_last_seen_at: { type: [string, 'null'], format: date-time }
+        origin_endpoint: { type: string, format: uri }
+        replica_endpoint: { type: string, format: uri }
+        content_local_file_id: { type: string }
+        deleted_at: { type: [string, 'null'], format: date-time }
+        purge_after: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    UnifiedFileList:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/UnifiedFile' }
+
+    Folder:
+      type: object
+      required: [id, name, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        parent_id: { type: [string, 'null'], format: uuid }
+        name: { type: string }
+        status: { type: string }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Share:
+      type: object
+      required: [id, file_id, status, expires_at, max_downloads, download_count, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        file_id: { type: string, format: uuid }
+        file_name: { type: string }
+        token: { type: string, description: Returned only when the share is created }
+        status: { type: string, enum: [active, revoked] }
+        expires_at: { type: string, format: date-time }
+        max_downloads: { type: integer, minimum: 0 }
+        download_count: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+
+    CreateTransferRequest:
+      type: object
+      additionalProperties: false
+      required: [file_id, target_device_id]
+      properties:
+        file_id: { type: string, format: uuid }
+        target_device_id: { type: string, format: uuid }
+        priority: { type: integer, minimum: -100, maximum: 100, default: 0 }
+
+    TransferTask:
+      type: object
+      required: [id, user_id, object_id, target_device_id, reason, state, priority, attempt, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        object_id: { type: string, format: uuid }
+        target_device_id: { type: string, format: uuid }
+        reason: { type: string, enum: [pull, push, replication, redundancy] }
+        state: { type: string }
+        priority: { type: integer }
+        lease_owner: { type: [string, 'null'], format: uuid }
+        lease_until: { type: [string, 'null'], format: date-time }
+        attempt: { type: integer, minimum: 0 }
+        version: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TransferAssignment:
+      type: object
+      required: [task_id, object_id, target_device_id, source_device_id, source_endpoint, source_local_file_id, target_local_file_id, name, mime, size, sha256, reason, attempt, version, lease_until]
+      properties:
+        task_id: { type: string, format: uuid }
+        object_id: { type: string, format: uuid }
+        target_device_id: { type: string, format: uuid }
+        source_device_id: { type: string, format: uuid }
+        source_endpoint: { type: string, format: uri }
+        source_local_file_id: { type: string }
+        target_local_file_id: { type: string }
+        name: { type: string }
+        mime: { type: string }
+        size: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        reason: { type: string }
+        attempt: { type: integer, minimum: 1 }
+        version: { type: integer, minimum: 1 }
+        lease_until: { type: string, format: date-time }
+
+    TransferStateRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, state]
+      properties:
+        expected_version: { type: integer, minimum: 1 }
+        state: { type: string, enum: [discovering, connecting, transferring, verifying] }
+
+    CompleteTransferRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, local_file_id, endpoint, size, sha256]
+      properties:
+        expected_version: { type: integer, minimum: 1 }
+        local_file_id: { type: string, minLength: 1, maxLength: 64 }
+        endpoint: { type: string, format: uri, maxLength: 2048 }
+        size: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+
+    DeviceCommand:
+      type: object
+      required: [id, operation_id, type, payload, attempt, lease_until]
+      properties:
+        id: { type: string, format: uuid }
+        operation_id: { type: string }
+        type: { type: string, enum: [file.lifecycle] }
+        payload: { type: object, additionalProperties: true }
+        attempt: { type: integer, minimum: 1 }
+        lease_until: { type: string, format: date-time }
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+            message:
+              type: string
+              description: Human-readable error message
+            request_id:
+              type: string
+              description: Request identifier for debugging
+            details:
+              type: object
+              additionalProperties: true
+              description: Additional error details
+
+    LANFile:
+      type: object
+      required: [id, object_id, name, mime, size, sha256, status, created_at, updated_at]
+      properties:
+        id: { type: string }
+        object_id: { type: string, pattern: '^[0-9a-f]{64}$' }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        mime: { type: string }
+        size: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        status: { type: string, enum: [active, trashed, purging] }
+        deleted_at: { type: [string, 'null'], format: date-time }
+        purge_after: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    LANFileList:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/LANFile' }
+
+    Pagination:
+      type: object
+      properties:
+        cursor:
+          type: string
+          description: Opaque cursor for next page
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+        pagination:
+          $ref: '#/components/schemas/Pagination'
