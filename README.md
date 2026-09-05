@@ -4,16 +4,14 @@ A personal distributed cloud drive system that keeps file contents on user devic
 
 ## Project Status
 
-**Status: LAN V1 implementation candidate — automated data-path gates pass; Android hardware acceptance is still required before release.**
+**Status: LAN V1 implementation candidate — Android hardware acceptance is still required before release.**
 
-The repository now contains one deliberately narrow, executable vertical slice: a Docker Compose identity control plane, an Ubuntu Agent that persists verified object bytes and LAN metadata, and an Android 10+ APK that uploads through tus and downloads through HTTP Range using the system file picker. The broader M0..M10 distributed-drive roadmap has not passed; only the LAN V1 scope in [`docs/06_局域网部署与验收.md`](docs/06_局域网部署与验收.md) is an implementation candidate.
+The repository contains one deliberately narrow vertical slice: a Docker Compose identity control plane, an Ubuntu Agent that persists verified object bytes and LAN metadata, and an Android 10+ APK that uploads through tus and downloads through HTTP Range using the system file picker. The broader distributed-drive roadmap is outside the current release scope.
 
 LAN V1 evidence and remaining release boundary:
 
-- `make lan-e2e` exercises real Compose/PostgreSQL, Agent/SQLite/object files and TCP: bootstrap, unauthorized rejection, resumable upload, same-name rejection, Range/full download, SHA-256, rename, trash/restore/manual purge, restart persistence and automatic expiry purge.
-- `make lan-e2e-docker` proves the fully containerized shape where the Agent runs as a Docker container (pure-Go SQLite, `CGO_ENABLED=0`) and serves the same lifecycle closed loop with container-restart persistence.
-- DNS-SD/mDNS discovery has unit coverage; the opt-in multicast integration case must still be run on a real multicast-capable LAN before discovery is accepted.
-- The Android project builds and passes lint; a debug APK is produced under `dist/`. A target Android device is not attached to this checkout, so physical Wi-Fi, SAF-provider and process/network-interruption acceptance remains explicitly unverified.
+- DNS-SD/mDNS discovery provides only a candidate address; Android must still authenticate with the Control Server token.
+- A target Android device is not attached to this checkout, so physical Wi-Fi, SAF-provider and process/network-interruption acceptance remains unverified.
 - LAN V1 supports one account, one Ubuntu storage Agent and its first Android device. Additional device registration, global file metadata sync, public networking, Relay, Windows and multi-source transfer remain frozen.
 - The broader control/worker/P2P packages are still partial and must not be presented as completed product features.
 
@@ -21,42 +19,39 @@ LAN V1 evidence and remaining release boundary:
 
 ### Prerequisites
 
-- Product deployment: Docker Engine, Docker Compose plugin and OpenSSL on Ubuntu 22.04/24.04. PostgreSQL and SQLite run inside the stack.
+- Product deployment: Docker Engine, Docker Compose plugin and OpenSSL on Ubuntu 22.04/24.04. PostgreSQL runs in the server stack; the host-installed Ubuntu Agent owns its embedded SQLite database.
 - Source development: Go 1.26.6+; Android builds additionally require JDK 17 and Android SDK 35.
 - Android 10+ device on the same trusted LAN; ADB is optional for side-loading.
 
 ### Build
 
 ```bash
-make build          # build all binaries into bin/
+make build          # build all Go binaries into build/bin/
+make deb            # write the Ubuntu package under release/ubuntu/
+make apk            # write a signed APK under release/android/
 ```
 
 ### Run the LAN product
 
 ```bash
-./deploy/compose/server.py init             # 首次生成 conf/server.json（Git 忽略，0600）
+./server/deploy/server.py init              # 首次生成 conf/server.json（Git 忽略，0600）
 $EDITOR conf/server.json                    # 按需修改端口、数据库、日志和认证配置
-./deploy/compose/server.py up -d --build --wait
+./server/deploy/server.py up -d --build --wait
 ```
 
 服务器只读取 `conf/server.json`；Compose 启动器仅把同一文件安全挂载给各服务器进程。不要提交该文件，也不要把明文 LAN 测试端口暴露到公网。Ubuntu Agent 客户端仍使用自身的 `/etc/share-disk/agent.env`。
 
-监控台不是服务器基本依赖，默认关闭。执行 `./deploy/compose/server.py monitoring true 8081 local` 可仅在服务器本机开放，或将 `local` 改为 `external` 允许外部访问；端口和访问范围都写入 `conf/server.json`。重建 Control Server 后打开 `http://<服务器地址>:8081/admin`。关闭时监控监听器不启动，文件同步等核心服务不受影响。
+监控台不是服务器基本依赖，默认关闭。执行 `./server/deploy/server.py monitoring true 8081 local` 可仅在服务器本机开放，或将 `local` 改为 `external` 允许外部访问；端口和访问范围都写入 `conf/server.json`。重建 Control Server 后打开 `http://<服务器地址>:8081/admin`。关闭时监控监听器不启动，文件同步等核心服务不受影响。
 
-### Development
+### Production-source maintenance
 
 ```bash
 make fmt            # gofmt/goimports (write)
 make fmt-check      # verify formatting
 make lint           # go vet + staticcheck
-make test           # unit tests
-make test-race      # race-detector tests
 make contract       # protobuf generation consistency + OpenAPI contract
 make vuln           # govulncheck
-make check          # full CI gate
-make container-test # real Compose readiness from the Ubuntu host
-make lan-e2e        # complete authenticated LAN upload/download data path
-make lan-e2e-docker # fully containerized LAN data path (Agent in Docker)
+make check          # production-source gate
 ```
 
 ### Configuration
@@ -96,7 +91,7 @@ make lan-e2e-docker # fully containerized LAN data path (Agent in Docker)
 - `GET /v1/lan/trash` - list recoverable files (Agent)
 - `POST /v1/lan/trash/{id}/restore` / `DELETE /v1/lan/trash/{id}` - restore or permanently delete (Agent)
 
-See `api/openapi/openapi.yaml` for the control API contract. The remaining endpoints in the design (`devices`, `folders`, `files`, `transfers`, `sync`, `trash`, `replicas`, `events`, `metrics`) are specified but not yet implemented.
+See `contracts/openapi/openapi.yaml` for the control API contract. The remaining endpoints in the design (`devices`, `folders`, `files`, `transfers`, `sync`, `trash`, `replicas`, `events`, `metrics`) are specified but not yet implemented.
 
 ## Architecture
 
@@ -108,15 +103,22 @@ The system uses a "modular control service + per-device agent + libp2p data plan
 - **PostgreSQL**: Authoritative source for accounts, logical directory, devices, tasks, and events
 - **SQLite**: Local authority for agent state, chunk progress, and pending operations
 
-## Documentation
+### Source ownership
 
-- [Requirements Baseline](docs/01_需求基线与验收追踪.md)
-- [Architecture Design](docs/02_架构设计方案.md)
-- [Coding Standards](docs/03_代码规范.md)
-- [Detailed Design](docs/04_详细设计与实现方案.md)
-- [Development Milestones](docs/05_开发阶段性目标.md)
-- [LAN Deployment & Acceptance](docs/06_局域网部署与验收.md)
-- [Client Functions & UI/UE Baseline](docs/07_客户端功能与UIUE基线.md)
+- [`server/`](server/) contains the Docker control plane, PostgreSQL migrations and server deployment assets.
+- [`client/android/`](client/android/) contains the complete Android Gradle project.
+- [`client/ubuntu/`](client/ubuntu/) contains the Agent, CLI, SQLite migrations and Debian packaging source.
+- [`client/windows/`](client/windows/) reserves the Windows product boundary; implementation remains frozen for LAN V1.
+- [`contracts/`](contracts/) contains cross-process OpenAPI and Protobuf contracts.
+- [`internal/`](internal/) contains Go infrastructure shared by the server and Ubuntu client; product-private packages stay below their owning product.
+- [`release/`](release/) is the ignored output location for signed/versioned `.apk`, `.deb` and future Windows installers. Temporary files belong in `build/`.
+
+## Contracts and client guide
+
+- Control API: [`contracts/openapi/openapi.yaml`](contracts/openapi/openapi.yaml)
+- Local IPC and transfer protocol: [`contracts/proto/sharedisk/v1/`](contracts/proto/sharedisk/v1/)
+- Android build and installation guide: [`client/android/README.md`](client/android/README.md)
+- Ubuntu Agent source and packaging guide: [`client/ubuntu/README.md`](client/ubuntu/README.md)
 
 ## License
 

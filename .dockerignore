@@ -9,9 +9,10 @@
 *.swo
 
 # Build artifacts
+build/
+release/
 bin/
 dist/
-build/
 coverage/
 
 # Data directories
@@ -32,13 +33,8 @@ secrets/
 *.pem
 
 # Documentation
-docs/
 *.md
 !README.md
-
-# Test files
-test/
-*_test.go
 
 # Temporary files
 tmp/

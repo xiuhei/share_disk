@@ -12,9 +12,10 @@ secrets/
 
 
 # Go build and test outputs
-/bin/
-/dist/
 /build/
+/bin/
+# Legacy local output; new artifacts use release/.
+/dist/
 /coverage/
 *.test
 *.out
@@ -37,11 +38,20 @@ coverage*.html
 
 # Android and native build outputs
 .gradle/
+**/build/
 local.properties
 *.apk
 *.aab
 .externalNativeBuild/
 .cxx/
+
+# Versioned release artifacts. Keep only the directory contract in Git.
+/release/android/*
+!/release/android/.gitkeep
+/release/ubuntu/*
+!/release/ubuntu/.gitkeep
+/release/windows/*
+!/release/windows/.gitkeep
 
 # IDE and editor files
 .idea/

@@ -16,7 +16,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"google.golang.org/protobuf/proto"
 
-	sharediskv1 "github.com/share-disk/share-disk/proto/sharedisk/v1"
+	sharediskv1 "github.com/share-disk/share-disk/contracts/proto/sharedisk/v1"
 )
 
 // TransferProtocolID is the protocol ID for object transfers.

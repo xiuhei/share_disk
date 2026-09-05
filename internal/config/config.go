@@ -165,7 +165,7 @@ func DefaultConfig() *Config {
 			WriteTimeout:    30 * time.Second,
 			IdleTimeout:     120 * time.Second,
 			ShutdownTimeout: 30 * time.Second,
-			MigrationsDir:   "migrations/postgres",
+			MigrationsDir:   "server/migrations/postgres",
 			WorkerInterval:  30 * time.Second,
 		},
 		Database: DatabaseConfig{
