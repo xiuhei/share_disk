@@ -1,8 +1,10 @@
-// Package desktopui provides the loopback-only Ubuntu browser client.
+// Package desktopui provides the loopback-only desktop client shared by the
+// Ubuntu and Windows launchers.
 package desktopui
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,10 +25,12 @@ type localHandler interface {
 }
 
 type Server struct {
-	handler localHandler
-	tempDir string
-	server  *http.Server
-	ln      net.Listener
+	handler      localHandler
+	tempDir      string
+	server       *http.Server
+	ln           net.Listener
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 func New(address, tempDir string, handler localHandler) (*Server, error) {
@@ -37,11 +42,14 @@ func New(address, tempDir string, handler localHandler) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{handler: handler, tempDir: tempDir, ln: ln}
+	s := &Server{handler: handler, tempDir: tempDir, ln: ln, shutdown: make(chan struct{})}
 	r := chi.NewRouter()
 	r.Get("/", s.index)
 	r.Get("/api/status", s.status)
 	r.Get("/api/files", s.files)
+	r.Get("/api/transfers", s.transfers)
+	r.Post("/api/transfers/{id}/cancel", s.sameOrigin(s.cancelTransfer))
+	r.Post("/api/shutdown", s.sameOrigin(s.requestShutdown))
 	r.Post("/api/import", s.sameOrigin(s.importFile))
 	r.Post("/api/files/{id}/action", s.sameOrigin(s.fileAction))
 	r.Get("/api/files/{id}/download", s.download)
@@ -49,7 +57,8 @@ func New(address, tempDir string, handler localHandler) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) Address() string { return "http://" + s.ln.Addr().String() }
+func (s *Server) Address() string                    { return "http://" + s.ln.Addr().String() }
+func (s *Server) ShutdownRequested() <-chan struct{} { return s.shutdown }
 func (s *Server) Serve(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
@@ -119,6 +128,29 @@ func (s *Server) files(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"files": active.GetListLocalFiles().GetFiles(), "trash": trash.GetListLocalFiles().GetFiles()})
+}
+
+func (s *Server) transfers(w http.ResponseWriter, r *http.Request) {
+	resp, ok := s.call(r.Context(), &sharediskv1.LocalRequest{Payload: &sharediskv1.LocalRequest_ListTransfers{ListTransfers: &sharediskv1.ListTransfersRequest{Limit: 100}}})
+	if !ok {
+		writeProtoError(w, resp)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp.GetListTransfers())
+}
+
+func (s *Server) cancelTransfer(w http.ResponseWriter, r *http.Request) {
+	resp, ok := s.call(r.Context(), &sharediskv1.LocalRequest{Payload: &sharediskv1.LocalRequest_CancelTransfer{CancelTransfer: &sharediskv1.CancelTransferRequest{TransferId: chi.URLParam(r, "id")}}})
+	if !ok {
+		writeProtoError(w, resp)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp.GetCancelTransfer())
+}
+
+func (s *Server) requestShutdown(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusAccepted, map[string]bool{"shutting_down": true})
+	s.shutdownOnce.Do(func() { close(s.shutdown) })
 }
 
 func listRequest(trash bool) *sharediskv1.LocalRequest {
@@ -225,8 +257,11 @@ func writeJSON(w http.ResponseWriter, status int, value interface{}) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-const desktopHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Share Disk Ubuntu</title><style>
+const legacyDesktopHTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Share Disk Ubuntu</title><style>
 :root{--ink:#18231d;--muted:#69776f;--green:#126b4e;--mint:#e0f4e9;--bg:#f4f7f5;--line:#e0e7e2;--white:#fff;--red:#ad3d34}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 90% 0,#d8f3e5,transparent 30%),var(--bg);color:var(--ink);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}.app{max-width:1180px;margin:auto;padding:28px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}.brand{display:flex;align-items:center;gap:12px}.logo{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--green);color:#fff;font-size:20px;font-weight:900}.brand h1{font-size:21px;margin:0}.brand small{color:var(--muted)}button,.button{border:0;border-radius:12px;padding:11px 15px;background:var(--mint);color:var(--green);font:inherit;font-weight:700;cursor:pointer}.primary{background:var(--green);color:#fff}.danger{background:#f9e9e7;color:var(--red)}.hero{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:18px}.welcome,.status,.panel{background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:20px;box-shadow:0 15px 45px rgba(25,63,45,.08)}.welcome{padding:24px}.welcome h2{font-size:28px;margin:0 0 5px}.welcome p{color:var(--muted);margin:0}.status{padding:22px;display:flex;align-items:center;gap:13px}.dot{width:11px;height:11px;border-radius:50%;background:#2bb779;box-shadow:0 0 0 7px #dcf5e9}.panel{overflow:hidden}.head{display:flex;align-items:center;justify-content:space-between;padding:18px 21px;border-bottom:1px solid var(--line)}.head h3{margin:0;font-size:18px}.tabs{display:flex;gap:7px}.tabs button.active{background:var(--green);color:#fff}.upload input{display:none}.table{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{padding:14px 20px;text-align:left;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}.name{font-weight:750}.sub{display:block;color:var(--muted);font-size:12px}.actions{display:flex;gap:6px}.empty{text-align:center;padding:55px;color:var(--muted)}.toast{position:fixed;right:22px;bottom:22px;padding:13px 16px;border-radius:12px;background:#14271e;color:#fff;opacity:0;transform:translateY(10px);transition:.2s}.toast.show{opacity:1;transform:none}@media(max-width:700px){.app{padding:17px}.hero{grid-template-columns:1fr}.welcome h2{font-size:23px}.head{align-items:flex-start;gap:12px;flex-direction:column}.top{align-items:flex-start}.brand small{display:none}}
 </style></head><body><main class="app"><header class="top"><div class="brand"><div class="logo">S</div><div><h1>Share Disk</h1><small>Ubuntu 本地文件客户端</small></div></div><label class="button primary upload">导入文件<input id="picker" type="file"></label></header><section class="hero"><article class="welcome"><h2>你的本地文件空间</h2><p>文件正文保存在这台 Ubuntu，操作由本机 Agent 安全执行。</p></article><article class="status"><span class="dot"></span><div><b id="state">正在连接 Agent…</b><span class="sub" id="detail"></span></div></article></section><section class="panel"><div class="head"><h3>文件</h3><div class="tabs"><button class="active" data-view="files">全部文件</button><button data-view="trash">回收站</button><button id="refresh">刷新</button></div></div><div class="table"><table><thead><tr><th>名称</th><th>大小</th><th>状态</th><th>SHA-256</th><th>操作</th></tr></thead><tbody id="rows"></tbody></table><div class="empty" id="empty">暂无文件</div></div></section></main><div class="toast" id="toast"></div><script>
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);let data={files:[],trash:[]},view='files';const esc=v=>String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const size=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(1)+' GB';function toast(v){$('#toast').textContent=v;$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2500)}async function api(url,opt){const r=await fetch(url,opt);let d={};try{d=await r.json()}catch(e){}if(!r.ok)throw Error((d.error&&d.error.message)||'操作失败');return d}function render(){const list=data[view]||[];$('#rows').innerHTML=list.map(f=>'<tr><td><span class="name">'+esc(f.name)+'</span><span class="sub">'+esc(f.mime||'application/octet-stream')+'</span></td><td>'+size(f.size)+'</td><td>'+esc(f.status)+'</td><td>'+esc(f.sha256.slice(0,14))+'…</td><td><div class="actions">'+(view==='files'?'<a class="button" href="/api/files/'+encodeURIComponent(f.id)+'/download?name='+encodeURIComponent(f.name)+'">下载</a><button data-action="rename" data-id="'+esc(f.id)+'">重命名</button><button class="danger" data-action="trash" data-id="'+esc(f.id)+'">删除</button>':'<button data-action="restore" data-id="'+esc(f.id)+'">恢复</button><button class="danger" data-action="purge" data-id="'+esc(f.id)+'">永久删除</button>')+'</div></td></tr>').join('');$('#empty').style.display=list.length?'none':'block';$$('[data-action]').forEach(b=>b.onclick=()=>act(b.dataset.id,b.dataset.action))}async function load(){try{data=await api('/api/files');const s=await api('/api/status');$('#state').textContent='Agent 正常运行';$('#detail').textContent=s.active_transfers+' 个活跃传输 · '+s.version;render()}catch(e){$('#state').textContent='需要完成 Agent 配置';$('#detail').textContent=e.message;toast(e.message)}}async function act(id,action){let name='';if(action==='rename'){name=prompt('输入新文件名');if(!name)return}if((action==='trash'||action==='purge')&&!confirm(action==='purge'?'永久删除后不可恢复，继续？':'移到回收站？'))return;try{await api('/api/files/'+encodeURIComponent(id)+'/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,name})});toast('操作成功');load()}catch(e){toast(e.message)}}$$('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view;$$('[data-view]').forEach(x=>x.classList.remove('active'));b.classList.add('active');render()});$('#refresh').onclick=load;$('#picker').onchange=async e=>{if(!e.target.files.length)return;const form=new FormData();form.append('file',e.target.files[0]);try{await api('/api/import',{method:'POST',body:form});toast('导入完成并已校验');load()}catch(err){toast(err.message)}e.target.value=''};load()
 </script></body></html>`
+
+//go:embed assets/index.html
+var desktopHTML string

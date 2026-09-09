@@ -27,24 +27,16 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">设置</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          管理您的账户和应用设置
-        </p>
-      </div>
-
-      <div className="flex-1 flex gap-6 overflow-hidden">
+    <div className="page-shell">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden sm:flex-row sm:gap-6">
         {/* Sidebar */}
-        <div className="w-48 flex-shrink-0 hidden sm:block">
-          <nav className="space-y-1">
+        <div className="w-full flex-shrink-0 overflow-x-auto sm:w-48">
+          <nav className="flex gap-1 sm:block sm:space-y-1">
             {sections.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 onClick={() => setActiveSection(key)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors sm:w-full sm:gap-3 ${
                   activeSection === key
                     ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-500'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
@@ -58,7 +50,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto pb-2">
           {activeSection === 'account' && (
             <div className="space-y-6">
               <div className="card">
@@ -93,9 +85,6 @@ export default function SettingsPage() {
 
               <div className="card border-red-200 dark:border-red-800">
                 <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">危险操作</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  退出登录将清除本地缓存
-                </p>
                 <button onClick={logout} className="btn btn-danger">
                   <LogOut size={16} />
                   退出登录

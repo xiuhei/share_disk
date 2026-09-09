@@ -180,6 +180,13 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.desktop != nil {
 		serverCount++
 		go func() { errCh <- a.desktop.Serve(runCtx) }()
+		go func() {
+			select {
+			case <-a.desktop.ShutdownRequested():
+				cancel()
+			case <-runCtx.Done():
+			}
+		}()
 	}
 	maintenanceDone := make(chan struct{})
 	go func() {

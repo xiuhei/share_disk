@@ -1,8 +1,7 @@
+import { useState } from 'react'
 import { 
   Trash2, 
   RotateCcw, 
-  AlertTriangle,
-  Clock,
   File,
   Image,
   Film,
@@ -10,6 +9,7 @@ import {
   FileText
 } from 'lucide-react'
 import { formatFileSize, getFileType } from '../../utils/helpers'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
 interface TrashItem {
   id: string
@@ -40,38 +40,28 @@ function FileIcon({ type }: { type: string }) {
 }
 
 export default function TrashPage() {
+  const [items, setItems] = useState(mockTrash)
+  const [pendingDelete, setPendingDelete] = useState<TrashItem | 'all' | null>(null)
+
+  const confirmDelete = () => {
+    if (pendingDelete === 'all') setItems([])
+    else if (pendingDelete) setItems(current => current.filter(item => item.id !== pendingDelete.id))
+    setPendingDelete(null)
+  }
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="page-shell">
       {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">回收站</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            已删除的文件将在 30 天后永久删除
-          </p>
-        </div>
-        <button className="btn btn-danger">
+      <div className="mb-6 flex items-center justify-end">
+        <button disabled={items.length === 0} onClick={() => setPendingDelete('all')} className="btn btn-danger">
           <Trash2 size={18} />
           <span className="hidden sm:inline">清空回收站</span>
         </button>
       </div>
 
-      {/* Warning Banner */}
-      <div className="flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl mb-6">
-        <AlertTriangle size={20} className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
-            回收站中的文件仍占用存储空间
-          </p>
-          <p className="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
-            您可以恢复文件或永久删除以释放空间
-          </p>
-        </div>
-      </div>
-
       {/* Trash List */}
       <div className="flex-1 overflow-auto">
-        {mockTrash.length > 0 ? (
+        {items.length > 0 ? (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
             <table className="w-full">
               <thead>
@@ -84,7 +74,7 @@ export default function TrashPage() {
                 </tr>
               </thead>
               <tbody>
-                {mockTrash.map(item => (
+                {items.map(item => (
                   <tr
                     key={item.id}
                     className="border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
@@ -106,10 +96,10 @@ export default function TrashPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button className="p-2 text-gray-400 hover:text-green-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="恢复">
+                        <button onClick={() => setItems(current => current.filter(entry => entry.id !== item.id))} className="p-2 text-gray-400 hover:text-green-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="恢复" aria-label={`恢复 ${item.name}`}>
                           <RotateCcw size={16} />
                         </button>
-                        <button className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="永久删除">
+                        <button onClick={() => setPendingDelete(item)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="永久删除" aria-label={`永久删除 ${item.name}`}>
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -126,6 +116,14 @@ export default function TrashPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete === 'all' ? '清空回收站？' : `永久删除“${pendingDelete?.name || ''}”？`}
+        confirmLabel={pendingDelete === 'all' ? '确认清空' : '永久删除'}
+        destructive
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   )
 }

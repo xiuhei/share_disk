@@ -23,8 +23,13 @@ export function getFileExtension(filename: string): string {
   return filename.slice(((filename.lastIndexOf('.') - 1) >>> 0) + 2).toLowerCase()
 }
 
-export function getFileType(filename: string): 'image' | 'video' | 'audio' | 'document' | 'other' {
-  const ext = getFileExtension(filename)
+export function getFileType(value: string): 'image' | 'video' | 'audio' | 'document' | 'other' {
+  const normalized = value.toLowerCase()
+  if (normalized.startsWith('image/')) return 'image'
+  if (normalized.startsWith('video/')) return 'video'
+  if (normalized.startsWith('audio/')) return 'audio'
+  if (normalized.includes('pdf') || normalized.includes('document') || normalized.includes('text') || normalized.includes('sheet') || normalized.includes('presentation')) return 'document'
+  const ext = getFileExtension(normalized)
   if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) return 'image'
   if (['mp4', 'webm', 'avi', 'mov'].includes(ext)) return 'video'
   if (['mp3', 'wav', 'ogg', 'flac'].includes(ext)) return 'audio'

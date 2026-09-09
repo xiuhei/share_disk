@@ -36,9 +36,12 @@ public final class UploadWorker extends Worker {
     @Override
     public Result doWork() {
         try {
+            setForegroundAsync(TransferNotifications.info(getApplicationContext(), getId(), "正在上传文件", "正在准备…"));
             Uri source = Uri.parse(require("source"));
-            LanFile file = new ApiClient(getApplicationContext()).upload(source, message ->
-                    setProgressAsync(new Data.Builder().putString("message", message).build()));
+            LanFile file = new ApiClient(getApplicationContext()).upload(source, message -> {
+                setProgressAsync(new Data.Builder().putString("message", message).build());
+                setForegroundAsync(TransferNotifications.info(getApplicationContext(), getId(), "正在上传文件", message));
+            });
             String message = file.status.equals("local_ready_pending_register")
                     ? "本地上传完成并校验：" + file.name + "；控制服务恢复后将自动登记"
                     : "上传完成并校验：" + file.name;

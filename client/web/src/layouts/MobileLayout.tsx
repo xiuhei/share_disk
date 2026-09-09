@@ -1,104 +1,51 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { 
-  FolderOpen, 
-  ArrowUpDown, 
-  Monitor, 
-  Settings,
-  Menu,
-  X
-} from 'lucide-react'
-import { useState } from 'react'
+import { ArrowUpDown, FolderOpen, HardDrive, Menu, Monitor, Search, Settings, Share2, Trash2, X } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 
-const navItems = [
+const primaryNav = [
   { path: '/files', icon: FolderOpen, label: '文件' },
   { path: '/transfers', icon: ArrowUpDown, label: '传输' },
   { path: '/devices', icon: Monitor, label: '设备' },
+  { path: '/shares', icon: Share2, label: '分享' },
   { path: '/settings', icon: Settings, label: '设置' },
 ]
 
-interface MobileLayoutProps {
-  children: ReactNode
+const titles: Record<string, string> = {
+  '/files': '全部文件', '/transfers': '传输任务', '/devices': '设备',
+  '/shares': '我的分享', '/trash': '回收站', '/settings': '设置',
 }
 
-export default function MobileLayout({ children }: MobileLayoutProps) {
+export default function MobileLayout({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const { isDark, toggle } = useTheme()
+  const { pathname } = useLocation()
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="h-14 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+    <div className="flex h-[100dvh] flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
+      <header className="app-surface z-30 flex h-16 shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary-400 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">S</span>
-          </div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-white">Share Disk</h1>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-600 text-white"><HardDrive size={18} /></span>
+          <div><div className="text-[11px] font-medium uppercase tracking-[.14em] text-primary-600 dark:text-primary-400">Share Disk</div><div className="font-semibold leading-tight">{titles[pathname] || '空间'}</div></div>
         </div>
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 rounded-lg"
-        >
-          {menuOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        <div className="flex items-center gap-1">
+          <button className="icon-button" aria-label="搜索"><Search size={20} /></button>
+          <button onClick={() => setMenuOpen(v => !v)} className="icon-button" aria-expanded={menuOpen} aria-label="更多菜单">{menuOpen ? <X size={20} /> : <Menu size={20} />}</button>
+        </div>
       </header>
 
-      {/* Dropdown Menu */}
       {menuOpen && (
-        <div className="absolute top-14 left-0 right-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-lg z-50">
-          <div className="p-4 space-y-2">
-            {navItems.map(({ path, icon: Icon, label }) => (
-              <NavLink
-                key={path}
-                to={path}
-                onClick={() => setMenuOpen(false)}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-500'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                  }`
-                }
-              >
-                <Icon size={20} />
-                <span>{label}</span>
-              </NavLink>
-            ))}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-2">
-              <button
-                onClick={toggle}
-                className="flex items-center gap-3 px-4 py-3 w-full text-left rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50"
-              >
-                {isDark ? '☀️' : '🌙'}
-                <span>{isDark ? '浅色模式' : '深色模式'}</span>
-              </button>
-            </div>
-          </div>
+        <div className="app-surface absolute inset-x-3 top-[72px] z-20 rounded-2xl border p-2 shadow-xl">
+          <NavLink to="/trash" onClick={() => setMenuOpen(false)} className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-medium hover:bg-[var(--surface-soft)]"><Trash2 size={19} className="app-muted" />回收站</NavLink>
+          <button onClick={toggle} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-medium hover:bg-[var(--surface-soft)]"><span className="app-muted flex w-[19px] justify-center">{isDark ? '☀' : '☾'}</span>{isDark ? '使用浅色模式' : '使用深色模式'}</button>
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        {children}
-      </main>
-
-      {/* Bottom Navigation */}
-      <nav className="h-16 flex items-center justify-around border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 safe-bottom">
-        {navItems.map(({ path, icon: Icon, label }) => (
-          <NavLink
-            key={path}
-            to={path}
-            className={({ isActive }) =>
-              `flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors ${
-                isActive
-                  ? 'text-primary-500'
-                  : 'text-gray-500 dark:text-gray-400'
-              }`
-            }
-          >
-            <Icon size={22} />
-            <span className="text-xs">{label}</span>
+      <main className="min-h-0 flex-1 overflow-auto p-4 pb-6">{children}</main>
+      <nav className="app-surface safe-bottom z-20 grid min-h-[68px] shrink-0 grid-cols-5 border-t" aria-label="移动端导航">
+        {primaryNav.map(({ path, icon: Icon, label }) => (
+          <NavLink key={path} to={path} className={({ isActive }) => `flex min-w-0 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${isActive ? 'text-primary-600 dark:text-primary-400' : 'app-muted'}`}>
+            {({ isActive }) => <><span className={`flex h-8 w-12 items-center justify-center rounded-xl ${isActive ? 'bg-primary-50 dark:bg-primary-900/50' : ''}`}><Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} /></span><span>{label}</span></>}
           </NavLink>
         ))}
       </nav>

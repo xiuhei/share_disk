@@ -1,286 +1,314 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootView"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/paper"
-    android:fillViewport="true">
+    android:fitsSystemWindows="true"
+    android:orientation="vertical"
+    tools:ignore="TooManyViews">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="18dp">
+        android:layout_height="64dp"
+        android:background="@color/card"
+        android:elevation="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="18dp"
+        android:paddingEnd="10dp">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/brand"
-                    android:textColor="@color/forest"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="@string/title"
-                    android:textColor="@color/ink"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <Button
-                android:id="@+id/settingsButton"
-                style="@style/SecondaryButton"
+            <TextView
                 android:layout_width="wrap_content"
-                android:text="@string/settings" />
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.08"
+                android:text="@string/brand"
+                android:textColor="@color/muted"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/screenTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/tab_files"
+                android:textColor="@color/ink"
+                android:textSize="20sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
-            android:text="@string/subtitle"
-            android:textColor="@color/muted"
-            android:textSize="14sp" />
+        <ImageButton
+            android:id="@+id/searchButton"
+            style="@style/ToolbarIconButton"
+            android:contentDescription="@string/search_files"
+            android:src="@drawable/ic_search" />
+
+        <ImageButton
+            android:id="@+id/globalRefreshButton"
+            style="@style/ToolbarIconButton"
+            android:contentDescription="@string/refresh_files"
+            android:src="@drawable/ic_refresh" />
+
+        <ImageButton
+            android:id="@+id/settingsButton"
+            style="@style/ToolbarIconButton"
+            android:contentDescription="@string/settings"
+            android:src="@drawable/ic_settings" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/statusPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginEnd="16dp"
+        android:background="@drawable/status_panel"
+        android:accessibilityLiveRegion="polite"
+        android:gravity="center_vertical"
+        android:minHeight="48dp"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="6dp"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:id="@+id/statusProgress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:indeterminateTint="@color/forest"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/status"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="@drawable/status_panel"
-            android:padding="14dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:maxLines="3"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
             android:text="@string/not_connected"
             android:textColor="@color/forest_dark"
             android:textIsSelectable="true"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/statusDismiss"
+            style="@style/CompactTextButton"
+            android:contentDescription="@string/dismiss_status"
+            android:text="@string/dismiss_short" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/mainScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:overScrollMode="never">
+
         <LinearLayout
-            android:id="@+id/connectionPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/panel"
             android:orientation="vertical"
-            android:padding="14dp">
-
-            <TextView
-                style="@style/SectionTitle"
-                android:text="@string/connection_and_account" />
-
-            <EditText
-                android:id="@+id/controlUrl"
-                style="@style/AppField"
-                android:hint="@string/control_url_hint"
-                android:importantForAutofill="no"
-                android:inputType="textUri"
-                android:singleLine="true" />
-
-            <EditText
-                android:id="@+id/agentUrl"
-                style="@style/AppField"
-                android:hint="@string/agent_url_hint"
-                android:importantForAutofill="no"
-                android:inputType="textUri"
-                android:singleLine="true" />
-
-            <Button
-                android:id="@+id/discoverButton"
-                style="@style/SecondaryButton"
-                android:layout_width="match_parent"
-                android:layout_marginTop="6dp"
-                android:text="@string/discover_agents" />
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="28dp">
 
             <LinearLayout
-                android:id="@+id/discoveryList"
+                android:id="@+id/connectionPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:background="@drawable/panel"
+                android:orientation="vertical"
+                android:padding="16dp">
 
-            <EditText
-                android:id="@+id/account"
-                style="@style/AppField"
-                android:autofillHints="username"
-                android:hint="@string/account_hint"
-                android:inputType="text"
-                android:singleLine="true" />
-
-            <EditText
-                android:id="@+id/password"
-                style="@style/AppField"
-                android:autofillHints="password"
-                android:hint="@string/password_hint"
-                android:inputType="textPassword"
-                android:singleLine="true" />
-
-            <EditText
-                android:id="@+id/bootstrapToken"
-                style="@style/AppField"
-                android:hint="@string/bootstrap_hint"
-                android:importantForAutofill="no"
-                android:inputType="textPassword"
-                android:singleLine="true" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="horizontal">
-
-                <Button
-                    android:id="@+id/bootstrapButton"
-                    style="@style/SecondaryButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:text="@string/bootstrap" />
+                <TextView style="@style/SectionTitle" android:text="@string/connection_and_account" />
+                <TextView style="@style/SectionDescription" android:text="@string/connection_help" />
+                <Button android:id="@+id/previewButton" style="@style/SecondaryButton" android:layout_width="match_parent" android:layout_marginTop="12dp" android:text="@string/preview_interface" />
+                <TextView style="@style/FieldLabel" android:text="@string/service_address_step" />
+                <EditText android:id="@+id/controlUrl" style="@style/AppField" android:hint="@string/control_url_hint" android:importantForAutofill="no" android:inputType="textUri" android:singleLine="true" />
+                <EditText android:id="@+id/agentUrl" style="@style/AppField" android:hint="@string/agent_url_hint" android:importantForAutofill="no" android:inputType="textUri" android:singleLine="true" />
+                <Button android:id="@+id/discoverButton" style="@style/SecondaryButton" android:layout_width="match_parent" android:layout_marginTop="6dp" android:text="@string/discover_agents" />
+                <LinearLayout android:id="@+id/discoveryList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+                <TextView style="@style/FieldLabel" android:text="@string/account_login_step" />
+                <EditText android:id="@+id/account" style="@style/AppField" android:autofillHints="username" android:hint="@string/account_hint" android:inputType="text" android:singleLine="true" />
+                <EditText android:id="@+id/password" style="@style/AppField" android:autofillHints="password" android:hint="@string/password_hint" android:inputType="textPassword" android:singleLine="true" />
+                <EditText android:id="@+id/bootstrapToken" style="@style/AppField" android:hint="@string/bootstrap_hint" android:importantForAutofill="no" android:inputType="textPassword" android:singleLine="true" />
 
                 <Button
                     android:id="@+id/loginButton"
                     style="@style/PrimaryButton"
-                    android:layout_width="0dp"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="@string/login" />
+                    android:layout_width="match_parent"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/login_and_connect" />
 
-                <Button
-                    android:id="@+id/logoutButton"
-                    style="@style/SecondaryButton"
-                    android:layout_width="0dp"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="@string/logout" />
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="horizontal">
+                    <Button android:id="@+id/bootstrapButton" style="@style/SecondaryButton" android:layout_width="0dp" android:layout_weight="1" android:text="@string/bootstrap" />
+                    <Button android:id="@+id/logoutButton" style="@style/SecondaryButton" android:layout_width="0dp" android:layout_marginStart="8dp" android:layout_weight="1" android:text="@string/logout" />
+                </LinearLayout>
             </LinearLayout>
-        </LinearLayout>
-
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:scrollbars="none">
 
             <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <Button android:id="@+id/filesTab" style="@style/TabButton" android:text="@string/tab_files" />
-                <Button android:id="@+id/transfersTab" style="@style/TabButton" android:text="@string/tab_transfers" />
-                <Button android:id="@+id/devicesTab" style="@style/TabButton" android:text="@string/tab_devices" />
-                <Button android:id="@+id/trashTab" style="@style/TabButton" android:text="@string/tab_trash" />
-            </LinearLayout>
-        </HorizontalScrollView>
-
-        <LinearLayout
-            android:id="@+id/filesSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical">
-
-            <LinearLayout
+                android:id="@+id/filesSection"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="vertical">
 
-                <Button
-                    android:id="@+id/uploadButton"
-                    style="@style/PrimaryButton"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:text="@string/pick_upload" />
+                <Button android:id="@+id/refreshButton" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
+                <Button android:id="@+id/createFolderButton" android:layout_width="1dp" android:layout_height="1dp" android:visibility="gone" />
 
-                <Button
-                    android:id="@+id/refreshButton"
-                    style="@style/SecondaryButton"
-                    android:layout_width="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="@string/refresh_short" />
-            </LinearLayout>
-
-            <EditText
-                android:id="@+id/searchQuery"
-                style="@style/AppField"
-                android:layout_marginTop="8dp"
-                android:hint="@string/search_files"
-                android:singleLine="true" />
-
-            <Spinner
-                android:id="@+id/sortSpinner"
-                android:layout_width="match_parent"
-                android:layout_height="52dp" />
-
-            <Button
-                android:id="@+id/createFolderButton"
-                style="@style/SecondaryButton"
-                android:layout_width="match_parent"
-                android:text="@string/create_folder" />
-
-            <HorizontalScrollView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:scrollbars="none">
                 <LinearLayout
-                    android:id="@+id/folderList"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal" />
-            </HorizontalScrollView>
+                    android:id="@+id/searchPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="0dp"
+                    android:background="@drawable/input_panel"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
 
-            <TextView style="@style/SectionTitle" android:layout_marginTop="18dp" android:text="@string/all_files" />
-            <LinearLayout android:id="@+id/fileList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="vertical" />
-            <TextView style="@style/SectionTitle" android:layout_marginTop="18dp" android:text="@string/share_management" />
-            <LinearLayout android:id="@+id/shareList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="vertical" />
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@null"
+                        android:padding="10dp"
+                        android:src="@drawable/ic_search"
+                        android:tint="@color/muted" />
+
+                    <EditText
+                        android:id="@+id/searchQuery"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@android:color/transparent"
+                        android:hint="@string/search_files"
+                        android:imeOptions="actionSearch"
+                        android:importantForAutofill="no"
+                        android:inputType="text"
+                        android:paddingStart="0dp"
+                        android:paddingEnd="8dp"
+                        android:singleLine="true"
+                        android:textColor="@color/ink"
+                        android:textColorHint="@color/muted"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/clearSearchButton"
+                        style="@style/CompactTextButton"
+                        android:contentDescription="@string/clear_search"
+                        android:text="@string/clear_short"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <Spinner android:id="@+id/filterSpinner" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="0.8" android:backgroundTint="@color/forest" android:spinnerMode="dropdown" />
+                    <Spinner android:id="@+id/sortSpinner" android:layout_width="0dp" android:layout_height="48dp" android:layout_marginStart="3dp" android:layout_weight="0.8" android:backgroundTint="@color/forest" android:spinnerMode="dropdown" />
+                    <Spinner android:id="@+id/deviceFilterSpinner" android:layout_width="0dp" android:layout_height="48dp" android:layout_marginStart="3dp" android:layout_weight="1" android:backgroundTint="@color/forest" android:spinnerMode="dropdown" />
+                    <ImageButton android:id="@+id/viewModeButton" style="@style/CompactToolbarIconButton" android:layout_marginStart="3dp" android:contentDescription="@string/list_view" android:src="@drawable/ic_grid" />
+                    <ImageButton android:id="@+id/uploadButton" style="@style/CompactToolbarIconButton" android:layout_marginStart="2dp" android:contentDescription="@string/add_files" android:src="@drawable/ic_add" android:tint="@color/forest" />
+                </LinearLayout>
+
+                <HorizontalScrollView android:layout_width="match_parent" android:layout_height="1dp" android:visibility="gone">
+                    <LinearLayout android:id="@+id/folderList" android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" />
+                </HorizontalScrollView>
+
+                <TextView
+                    android:id="@+id/fileSummary"
+                    style="@style/FieldLabel"
+                    android:text="@string/file_summary_empty"
+                    android:visibility="gone" />
+
+                <HorizontalScrollView
+                    android:id="@+id/selectionBar"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/input_panel"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="6dp">
+
+                        <TextView android:id="@+id/selectionCount" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="8dp" android:textColor="@color/forest_dark" android:textSize="13sp" android:textStyle="bold" />
+                        <Button android:id="@+id/selectionDownload" style="@style/CompactActionButton" android:text="@string/action_download" />
+                        <Button android:id="@+id/selectionShare" style="@style/CompactActionButton" android:text="@string/action_share" />
+                        <Button android:id="@+id/selectionMove" style="@style/CompactActionButton" android:text="@string/action_move" />
+                        <Button android:id="@+id/selectionTrash" style="@style/CompactActionButton" android:text="@string/action_delete" android:textColor="@color/danger" />
+                        <Button android:id="@+id/selectionClose" style="@style/CompactActionButton" android:text="@string/action_cancel" />
+                    </LinearLayout>
+                </HorizontalScrollView>
+                <LinearLayout android:id="@+id/fileList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="vertical" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/transfersSection" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <TextView style="@style/SectionTitle" android:text="@string/background_transfers" />
+                <LinearLayout android:id="@+id/backgroundDownloadList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="vertical" />
+                <TextView style="@style/SectionTitle" android:layout_marginTop="22dp" android:text="@string/replica_tasks" />
+                <LinearLayout android:id="@+id/transferList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="vertical" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/devicesSection" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <LinearLayout android:id="@+id/deviceList" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/trashSection" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/panel" android:orientation="vertical" android:padding="6dp">
+                    <Button android:id="@+id/profileConnectionButton" style="@style/ProfileRow" android:text="@string/connection_settings" />
+                    <Button android:id="@+id/profileStorageButton" style="@style/ProfileRow" android:text="@string/storage_preferences" />
+                    <Button android:id="@+id/profileTransferButton" style="@style/ProfileRow" android:text="@string/transfer_preferences" />
+                    <Button android:id="@+id/profileAppearanceButton" style="@style/ProfileRow" android:text="@string/appearance" />
+                    <Button android:id="@+id/profileSecurityButton" style="@style/ProfileRow" android:text="@string/security" />
+                    <Button android:id="@+id/profileAboutButton" style="@style/ProfileRow" android:text="@string/about" />
+                </LinearLayout>
+                <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="@string/share_management" />
+                <LinearLayout android:id="@+id/shareList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="vertical" />
+                <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="@string/recently_deleted" />
+                <LinearLayout android:id="@+id/trashList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:orientation="vertical" />
+            </LinearLayout>
         </LinearLayout>
+    </ScrollView>
 
-        <LinearLayout
-            android:id="@+id/transfersSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical"
-            android:visibility="gone">
-            <TextView style="@style/SectionTitle" android:text="@string/background_transfers" />
-            <LinearLayout android:id="@+id/backgroundDownloadList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="vertical" />
-            <TextView style="@style/SectionTitle" android:layout_marginTop="18dp" android:text="@string/replica_tasks" />
-            <LinearLayout android:id="@+id/transferList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="vertical" />
-        </LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="70dp"
+        android:background="@color/card"
+        android:elevation="12dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingTop="5dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="5dp">
 
-        <LinearLayout
-            android:id="@+id/devicesSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical"
-            android:visibility="gone">
-            <TextView style="@style/SectionTitle" android:text="@string/account_devices" />
-            <LinearLayout android:id="@+id/deviceList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:orientation="vertical" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/trashSection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:orientation="vertical"
-            android:visibility="gone">
-            <TextView style="@style/SectionTitle" android:text="@string/trash" />
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="@string/trash_help" android:textColor="@color/muted" />
-            <LinearLayout android:id="@+id/trashList" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="vertical" />
-        </LinearLayout>
-
+        <ImageButton android:id="@+id/filesTab" style="@style/BottomNavIconButton" android:contentDescription="@string/tab_files" android:src="@drawable/ic_files" />
+        <ImageButton android:id="@+id/transfersTab" style="@style/BottomNavIconButton" android:contentDescription="@string/tab_transfers" android:src="@drawable/ic_transfer" />
+        <ImageButton android:id="@+id/devicesTab" style="@style/BottomNavIconButton" android:contentDescription="@string/tab_devices" android:src="@drawable/ic_devices" />
+        <ImageButton android:id="@+id/trashTab" style="@style/BottomNavIconButton" android:contentDescription="@string/tab_profile" android:src="@drawable/ic_profile" />
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

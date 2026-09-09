@@ -23,6 +23,10 @@ coverage*.txt
 coverage*.html
 /vendor/
 
+# Web dependencies and generated bundles
+**/node_modules/
+/client/web/dist/
+
 # Generated runtime data (never source packages)
 /data/
 /var/

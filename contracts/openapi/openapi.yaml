@@ -1133,7 +1133,7 @@ components:
 
     UnifiedFile:
       type: object
-      required: [id, folder_id, local_file_id, name, mime, size, sha256, status, version, origin_device_id, origin_device_name, origin_endpoint, replica_endpoint, content_local_file_id, created_at, updated_at]
+      required: [id, folder_id, local_file_id, name, mime, size, sha256, status, version, origin_device_id, origin_device_name, origin_endpoint, replica_endpoint, content_local_file_id, available, replicas, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         folder_id: { type: string, format: uuid }
@@ -1150,10 +1150,28 @@ components:
         origin_endpoint: { type: string, format: uri }
         replica_endpoint: { type: string, format: uri }
         content_local_file_id: { type: string }
+        available:
+          type: boolean
+          description: True when at least one verified replica device has a recent heartbeat.
+        replicas:
+          type: array
+          items: { $ref: '#/components/schemas/UnifiedFileReplica' }
         deleted_at: { type: [string, 'null'], format: date-time }
         purge_after: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    UnifiedFileReplica:
+      type: object
+      required: [device_id, device_name, platform, state, online, is_origin]
+      properties:
+        device_id: { type: string, format: uuid }
+        device_name: { type: string }
+        platform: { type: string }
+        state: { type: string, enum: [pending, ready, missing, corrupt, deleting, deleted] }
+        online: { type: boolean }
+        is_origin: { type: boolean }
+        last_seen_at: { type: [string, 'null'], format: date-time }
 
     UnifiedFileList:
       type: object

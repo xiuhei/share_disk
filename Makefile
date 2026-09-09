@@ -78,6 +78,7 @@ DEB_STAGING=build/package/deb/$(DEB_PACKAGE)
 DEB_RELEASE=release/ubuntu/$(DEB_PACKAGE).deb
 ANDROID_VERSION?=0.3.0-lan
 ANDROID_APK=release/android/share-disk_$(ANDROID_VERSION).apk
+WINDOWS_VERSION?=0.1.0
 
 # Build the Ubuntu .deb. The version is taken from DEB_VERSION (unified release
 # metadata), not the developer's git checkout. Binaries are built for this exact
@@ -130,6 +131,11 @@ apk:
 	mkdir -p release/android
 	cp client/android/app/build/outputs/apk/release/app-release.apk $(ANDROID_APK)
 	@echo "Built $(ANDROID_APK)"
+
+# Build the Windows desktop client and portable release archive.
+.PHONY: windows
+windows:
+	pwsh -NoProfile -File client/windows/build.ps1 -Version $(WINDOWS_VERSION)
 
 # Generated protobuf code is gofmt-clean but not goimports-clean; it must not
 # be reformatted or checked by goimports.
@@ -243,6 +249,7 @@ help:
 	@echo "  all           Run all checks (default)"
 	@echo "  build         Build all binaries"
 	@echo "  clean         Clean build artifacts"
+	@echo "  windows       Build the Windows desktop client"
 	@echo "  fmt           Format code"
 	@echo "  fmt-check     Check formatting"
 	@echo "  vet           Run go vet"

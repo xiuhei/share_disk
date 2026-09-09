@@ -26,25 +26,39 @@ var (
 // The control plane stores metadata and a verified replica endpoint only; it
 // never stores file bytes.
 type UnifiedFile struct {
-	ID                 string     `json:"id"`
-	FolderID           string     `json:"folder_id"`
-	LocalFileID        string     `json:"local_file_id"`
-	Name               string     `json:"name"`
-	MIME               string     `json:"mime"`
-	Size               int64      `json:"size"`
-	SHA256             string     `json:"sha256"`
-	Status             string     `json:"status"`
-	Version            int64      `json:"version"`
-	OriginDeviceID     string     `json:"origin_device_id"`
-	OriginDeviceName   string     `json:"origin_device_name"`
-	OriginLastSeenAt   *time.Time `json:"origin_last_seen_at,omitempty"`
-	OriginEndpoint     string     `json:"origin_endpoint"`
-	ReplicaEndpoint    string     `json:"replica_endpoint"`
-	ContentLocalFileID string     `json:"content_local_file_id"`
-	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
-	PurgeAfter         *time.Time `json:"purge_after,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                 string        `json:"id"`
+	FolderID           string        `json:"folder_id"`
+	LocalFileID        string        `json:"local_file_id"`
+	Name               string        `json:"name"`
+	MIME               string        `json:"mime"`
+	Size               int64         `json:"size"`
+	SHA256             string        `json:"sha256"`
+	Status             string        `json:"status"`
+	Version            int64         `json:"version"`
+	OriginDeviceID     string        `json:"origin_device_id"`
+	OriginDeviceName   string        `json:"origin_device_name"`
+	OriginLastSeenAt   *time.Time    `json:"origin_last_seen_at,omitempty"`
+	OriginEndpoint     string        `json:"origin_endpoint"`
+	ReplicaEndpoint    string        `json:"replica_endpoint"`
+	ContentLocalFileID string        `json:"content_local_file_id"`
+	Available          bool          `json:"available"`
+	Replicas           []FileReplica `json:"replicas"`
+	DeletedAt          *time.Time    `json:"deleted_at,omitempty"`
+	PurgeAfter         *time.Time    `json:"purge_after,omitempty"`
+	CreatedAt          time.Time     `json:"created_at"`
+	UpdatedAt          time.Time     `json:"updated_at"`
+}
+
+// FileReplica describes every verified device copy of a logical file. Online
+// is derived from both active registration and a recent heartbeat.
+type FileReplica struct {
+	DeviceID   string     `json:"device_id"`
+	DeviceName string     `json:"device_name"`
+	Platform   string     `json:"platform"`
+	State      string     `json:"state"`
+	Online     bool       `json:"online"`
+	IsOrigin   bool       `json:"is_origin"`
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
 type RegisterFileRequest struct {
@@ -308,7 +322,8 @@ const unifiedFileSelect = `
 	SELECT e.id::text, e.folder_id::text, COALESCE(e.client_file_id,''), e.name, COALESCE(o.mime,''), o.size,
 		encode(o.sha256,'hex'), e.status, e.version, e.origin_device_id::text,
 		COALESCE(d.name,''), d.last_seen_at, COALESCE(origin_replica.endpoint,''),
-		COALESCE(content_replica.endpoint,''), COALESCE(content_replica.client_file_id,''), tr.deleted_at, tr.purge_after,
+		COALESCE(content_replica.endpoint,''), COALESCE(content_replica.client_file_id,''),
+		COALESCE(replica_summary.replicas, '[]'::jsonb), tr.deleted_at, tr.purge_after,
 		e.created_at, e.updated_at
 	FROM file_entries e
 	JOIN file_objects o ON o.id=e.object_id AND o.user_id=e.user_id
@@ -318,10 +333,25 @@ const unifiedFileSelect = `
 		SELECT rr.endpoint,rr.client_file_id
 		FROM replicas rr JOIN devices rd ON rd.id=rr.device_id AND rd.user_id=rr.user_id AND rd.status='active'
 		WHERE rr.object_id=e.object_id AND rr.user_id=e.user_id AND rr.state='ready'
+		  AND rd.last_seen_at > NOW() - INTERVAL '2 minutes'
 		  AND rr.endpoint IS NOT NULL AND rr.client_file_id IS NOT NULL
 		ORDER BY rd.last_seen_at DESC NULLS LAST,rr.verified_at DESC NULLS LAST,rr.id
 		LIMIT 1
 	) content_replica ON TRUE
+	LEFT JOIN LATERAL (
+		SELECT jsonb_agg(jsonb_build_object(
+			'device_id', rd.id::text,
+			'device_name', rd.name,
+			'platform', rd.platform,
+			'state', rr.state,
+			'online', rd.status='active' AND rd.last_seen_at > NOW() - INTERVAL '2 minutes',
+			'is_origin', rd.id=e.origin_device_id,
+			'last_seen_at', rd.last_seen_at
+		) ORDER BY (rd.id=e.origin_device_id) DESC, rd.name) AS replicas
+		FROM replicas rr
+		JOIN devices rd ON rd.id=rr.device_id AND rd.user_id=rr.user_id
+		WHERE rr.object_id=e.object_id AND rr.user_id=e.user_id AND rr.state='ready'
+	) replica_summary ON TRUE
 	LEFT JOIN trash_records tr ON tr.file_entry_id=e.id AND tr.user_id=e.user_id`
 
 func getUnifiedFile(ctx context.Context, q interface {
@@ -348,11 +378,12 @@ func scanUnifiedFileRow(row scanner) (*UnifiedFile, error) {
 
 func scanUnifiedFile(row scanner) (*UnifiedFile, error) {
 	var file UnifiedFile
+	var replicaJSON []byte
 	var lastSeenAt, deletedAt, purgeAfter sql.NullTime
 	if err := row.Scan(&file.ID, &file.FolderID, &file.LocalFileID, &file.Name, &file.MIME, &file.Size,
 		&file.SHA256, &file.Status, &file.Version, &file.OriginDeviceID,
 		&file.OriginDeviceName, &lastSeenAt, &file.OriginEndpoint, &file.ReplicaEndpoint,
-		&file.ContentLocalFileID, &deletedAt, &purgeAfter,
+		&file.ContentLocalFileID, &replicaJSON, &deletedAt, &purgeAfter,
 		&file.CreatedAt, &file.UpdatedAt); err != nil {
 		return nil, err
 	}
@@ -365,6 +396,10 @@ func scanUnifiedFile(row scanner) (*UnifiedFile, error) {
 	if purgeAfter.Valid {
 		file.PurgeAfter = &purgeAfter.Time
 	}
+	if err := json.Unmarshal(replicaJSON, &file.Replicas); err != nil {
+		return nil, fmt.Errorf("decode file replicas: %w", err)
+	}
+	file.Available = file.ReplicaEndpoint != "" && file.ContentLocalFileID != ""
 	return &file, nil
 }
 

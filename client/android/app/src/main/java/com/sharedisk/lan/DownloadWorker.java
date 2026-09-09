@@ -40,10 +40,13 @@ public final class DownloadWorker extends Worker {
     @Override
     public Result doWork() {
         try {
+            setForegroundAsync(TransferNotifications.info(getApplicationContext(), getId(), "正在下载文件", "正在准备…"));
             LanFile file = new LanFile(new JSONObject(require("file_json")));
             Uri destination = Uri.parse(require("destination"));
-            new ApiClient(getApplicationContext()).download(file, destination, message ->
-                    setProgressAsync(new Data.Builder().putString("message", message).build()));
+            new ApiClient(getApplicationContext()).download(file, destination, message -> {
+                setProgressAsync(new Data.Builder().putString("message", message).build());
+                setForegroundAsync(TransferNotifications.info(getApplicationContext(), getId(), "正在下载 " + file.name, message));
+            });
             return Result.success(new Data.Builder().putString("message", "下载完成并校验：" + file.name).build());
         } catch (Exception error) {
             String message = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();

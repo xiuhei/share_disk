@@ -1,180 +1,107 @@
-import { 
-  Monitor, 
-  Smartphone, 
-  Wifi, 
-  WifiOff, 
-  Trash2, 
-  RefreshCw,
-  HardDrive,
-  Clock
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Clock, FolderSearch, Info, Monitor, Network, Pencil, RefreshCw,
+  Router, Server, Smartphone, Trash2, Wifi, WifiOff, X
 } from 'lucide-react'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
+type ConnectionMode = 'lan' | 'server' | 'offline'
 interface Device {
   id: string
   name: string
-  type: 'desktop' | 'mobile'
+  type: 'desktop' | 'mobile' | 'server'
   online: boolean
   lastSeen: string
   storage: { used: number; total: number }
   ip?: string
+  connectionMode: ConnectionMode
+  connectedPeer?: string
 }
 
-const mockDevices: Device[] = [
-  { 
-    id: '1', 
-    name: 'Ubuntu 工作站', 
-    type: 'desktop', 
-    online: true, 
-    lastSeen: '刚刚',
-    storage: { used: 15 * 1024 * 1024 * 1024, total: 50 * 1024 * 1024 * 1024 },
-    ip: '192.168.1.100'
-  },
-  { 
-    id: '2', 
-    name: 'Android 手机', 
-    type: 'mobile', 
-    online: true, 
-    lastSeen: '5 分钟前',
-    storage: { used: 8 * 1024 * 1024 * 1024, total: 64 * 1024 * 1024 * 1024 },
-    ip: '192.168.1.101'
-  },
-  { 
-    id: '3', 
-    name: 'MacBook Pro', 
-    type: 'desktop', 
-    online: false, 
-    lastSeen: '2 天前',
-    storage: { used: 25 * 1024 * 1024 * 1024, total: 256 * 1024 * 1024 * 1024 }
-  },
+const initialDevices: Device[] = [
+  { id: 'ubuntu', name: 'Ubuntu 工作站', type: 'desktop', online: true, lastSeen: '刚刚', storage: { used: 15 * 1024 ** 3, total: 50 * 1024 ** 3 }, ip: '192.168.1.100', connectionMode: 'lan', connectedPeer: 'Android 手机' },
+  { id: 'android', name: 'Android 手机', type: 'mobile', online: true, lastSeen: '5 分钟前', storage: { used: 8 * 1024 ** 3, total: 64 * 1024 ** 3 }, ip: '192.168.1.101', connectionMode: 'lan', connectedPeer: 'Ubuntu 工作站' },
+  { id: 'nas', name: '客厅 NAS', type: 'server', online: true, lastSeen: '1 分钟前', storage: { used: 48 * 1024 ** 3, total: 256 * 1024 ** 3 }, connectionMode: 'server' },
+  { id: 'work', name: '办公室电脑', type: 'desktop', online: true, lastSeen: '3 分钟前', storage: { used: 32 * 1024 ** 3, total: 128 * 1024 ** 3 }, connectionMode: 'server' },
+  { id: 'macbook', name: 'MacBook Pro', type: 'desktop', online: false, lastSeen: '2 天前', storage: { used: 25 * 1024 ** 3, total: 256 * 1024 ** 3 }, connectionMode: 'offline' },
 ]
 
-function formatBytes(bytes: number): string {
-  const gb = bytes / (1024 * 1024 * 1024)
-  return `${gb.toFixed(1)} GB`
+const connectionMeta = {
+  lan: { label: '局域网', icon: Network, tone: 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300' },
+  server: { label: '公网', icon: Router, tone: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300' },
+  offline: { label: '未连接', icon: WifiOff, tone: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
 }
 
+function formatBytes(bytes: number) { return `${(bytes / 1024 ** 3).toFixed(1)} GB` }
+
 export default function DevicesPage() {
+  const navigate = useNavigate()
+  const [devices, setDevices] = useState(initialDevices)
+  const [pendingRemove, setPendingRemove] = useState<Device | null>(null)
+  const [detailDevice, setDetailDevice] = useState<Device | null>(null)
+  const [renaming, setRenaming] = useState<Device | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const onlineCount = devices.filter(device => device.online).length
+  const connectionCounts = useMemo(() => ({
+    lan: devices.filter(device => device.connectionMode === 'lan').length,
+    server: devices.filter(device => device.connectionMode === 'server').length,
+    offline: devices.filter(device => device.connectionMode === 'offline').length,
+  }), [devices])
+
+  const refresh = () => {
+    if (refreshing) return
+    setRefreshing(true)
+    window.setTimeout(() => setRefreshing(false), 700)
+  }
+  const startRename = (device: Device) => { setRenaming(device); setRenameValue(device.name) }
+  const saveRename = () => {
+    const name = renameValue.trim()
+    if (!renaming || !name) return
+    setDevices(current => current.map(device => device.id === renaming.id ? { ...device, name } : device))
+    setRenaming(null)
+  }
+
   return (
-    <div className="h-full flex flex-col">
-      {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">设备管理</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            管理已连接的设备
-          </p>
-        </div>
-        <button className="btn btn-secondary">
-          <RefreshCw size={18} />
-          <span className="hidden sm:inline">刷新</span>
-        </button>
+    <div className="page-shell">
+      <div className="mb-6 flex items-center justify-end">
+        <div className="flex items-center gap-2"><span className={`app-muted text-xs transition-opacity ${refreshing ? 'opacity-100' : 'opacity-0'}`} role="status">刷新中…</span><button onClick={refresh} className="btn btn-secondary" disabled={refreshing}><RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} /><span className="hidden sm:inline">刷新</span></button></div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-6">
-        <div className="card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center">
-              <Wifi size={20} className="text-green-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">2</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">在线设备</div>
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-              <WifiOff size={20} className="text-gray-400" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">1</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">离线设备</div>
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center">
-              <HardDrive size={20} className="text-primary-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">48 GB</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">总存储空间</div>
-            </div>
-          </div>
-        </div>
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="card flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30"><Wifi size={19} className="text-green-600" /></span><div><div className="text-xl font-bold">{onlineCount}</div><div className="app-muted text-xs">在线设备</div></div></div>
+        {(['lan', 'server', 'offline'] as ConnectionMode[]).map(mode => { const meta = connectionMeta[mode]; const Icon = meta.icon; return <div key={mode} className="card flex items-center gap-3"><span className={`flex h-10 w-10 items-center justify-center rounded-xl ${meta.tone}`}><Icon size={19} /></span><div><div className="text-xl font-bold">{connectionCounts[mode]}</div><div className="app-muted text-xs">{meta.label}</div></div></div> })}
       </div>
 
-      {/* Device List */}
-      <div className="flex-1 overflow-auto space-y-3">
-        {mockDevices.map(device => (
-          <div
-            key={device.id}
-            className="card hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
-          >
-            <div className="flex items-start gap-4">
-              {/* Device Icon */}
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                device.online
-                  ? 'bg-primary-100 dark:bg-primary-900/20'
-                  : 'bg-gray-100 dark:bg-gray-700'
-              }`}>
-                {device.type === 'desktop' ? (
-                  <Monitor size={20} className={device.online ? 'text-primary-500' : 'text-gray-400'} />
-                ) : (
-                  <Smartphone size={20} className={device.online ? 'text-primary-500' : 'text-gray-400'} />
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-medium text-gray-900 dark:text-white">{device.name}</h3>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                    device.online
-                      ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${device.online ? 'bg-green-500' : 'bg-gray-400'}`} />
-                    {device.online ? '在线' : '离线'}
-                  </span>
-                </div>
-                
-                <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  <span className="flex items-center gap-1">
-                    <Clock size={14} />
-                    {device.lastSeen}
-                  </span>
-                  {device.ip && <span>{device.ip}</span>}
-                </div>
-
-                {/* Storage Bar */}
-                <div className="mt-3">
-                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    <span>存储空间</span>
-                    <span>{formatBytes(device.storage.used)} / {formatBytes(device.storage.total)}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary-400 rounded-full"
-                      style={{ width: `${(device.storage.used / device.storage.total) * 100}%` }}
-                    />
-                  </div>
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto pb-2">
+        {devices.map(device => {
+          const meta = connectionMeta[device.connectionMode]
+          const DeviceIcon = device.type === 'mobile' ? Smartphone : device.type === 'server' ? Server : Monitor
+          const ConnectionIcon = meta.icon
+          return <article key={device.id} className="card transition-colors hover:border-primary-200 dark:hover:border-primary-800">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${device.online ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-gray-100 text-gray-400 dark:bg-gray-800'}`}><DeviceIcon size={22} /></span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-semibold">{device.name}</h2><span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${device.online ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}><span className={`h-1.5 w-1.5 rounded-full ${device.online ? 'bg-green-500' : 'bg-gray-400'}`} />{device.online ? '在线' : '离线'}</span><span className={`hidden items-center gap-1.5 rounded-full px-2 py-1 text-xs font-semibold lg:inline-flex ${meta.tone}`}><ConnectionIcon size={13} />{meta.label}</span></div>
+                <div className="app-muted mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"><span className="flex items-center gap-1"><Clock size={13} />{device.lastSeen}</span>{device.ip && <span>{device.ip}</span>}</div>
+                <div className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs lg:hidden ${meta.tone}`}><ConnectionIcon size={16} /><span className="font-semibold">{meta.label}</span></div>
+                <div className="mt-3"><div className="app-muted mb-1 flex justify-between text-xs"><span>存储空间</span><span>{formatBytes(device.storage.used)} / {formatBytes(device.storage.total)}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div className="h-full rounded-full bg-primary-500" style={{ width: `${device.storage.used / device.storage.total * 100}%` }} /></div></div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={() => navigate(`/files?device=${device.id}`)} className="btn btn-secondary min-h-10 px-3"><FolderSearch size={16} />查看文件</button>
+                  <button onClick={() => startRename(device)} className="btn btn-ghost min-h-10 px-3"><Pencil size={16} />重命名</button>
+                  <button onClick={() => setDetailDevice(device)} className="btn btn-ghost min-h-10 px-3"><Info size={16} />详情</button>
                 </div>
               </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1">
-                <button className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                  <Trash2 size={16} />
-                </button>
-              </div>
+              <button onClick={() => setPendingRemove(device)} className="icon-button shrink-0 text-gray-400 hover:text-red-500" aria-label={`移除 ${device.name}`} title="移除设备"><Trash2 size={17} /></button>
             </div>
-          </div>
-        ))}
+          </article>
+        })}
       </div>
+
+      {renaming && <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center" onMouseDown={() => setRenaming(null)}><div className="modal-panel app-surface w-full max-w-md rounded-2xl border p-5 shadow-2xl" onMouseDown={event => event.stopPropagation()}><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold">重命名设备</h2><button className="icon-button" onClick={() => setRenaming(null)}><X size={19} /></button></div><input autoFocus className="input" value={renameValue} onChange={event => setRenameValue(event.target.value)} onKeyDown={event => event.key === 'Enter' && saveRename()} /><div className="mt-5 flex justify-end gap-2"><button className="btn btn-secondary" onClick={() => setRenaming(null)}>取消</button><button className="btn btn-primary" onClick={saveRename} disabled={!renameValue.trim()}>保存</button></div></div></div>}
+      {detailDevice && <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center" onMouseDown={() => setDetailDevice(null)}><div className="modal-panel app-surface w-full max-w-md rounded-2xl border p-5 shadow-2xl" onMouseDown={event => event.stopPropagation()}><div className="mb-5 flex items-start justify-between"><div><h2 className="text-lg font-semibold">{detailDevice.name}</h2><p className="app-muted mt-1 text-sm">设备详情</p></div><button className="icon-button" onClick={() => setDetailDevice(null)}><X size={19} /></button></div><dl className="grid grid-cols-[96px_1fr] gap-y-3 text-sm"><dt className="app-muted">状态</dt><dd>{detailDevice.online ? '在线' : '离线'}</dd><dt className="app-muted">连接模式</dt><dd>{connectionMeta[detailDevice.connectionMode].label}</dd><dt className="app-muted">连接对象</dt><dd>{detailDevice.connectedPeer || 'Share Disk 服务器'}</dd><dt className="app-muted">最近活动</dt><dd>{detailDevice.lastSeen}</dd><dt className="app-muted">设备地址</dt><dd>{detailDevice.ip || '未上报'}</dd><dt className="app-muted">存储占用</dt><dd>{formatBytes(detailDevice.storage.used)} / {formatBytes(detailDevice.storage.total)}</dd></dl></div></div>}
+      <ConfirmDialog open={pendingRemove !== null} title={`移除“${pendingRemove?.name || ''}”？`} confirmLabel="移除设备" destructive onCancel={() => setPendingRemove(null)} onConfirm={() => { if (pendingRemove) setDevices(current => current.filter(device => device.id !== pendingRemove.id)); setPendingRemove(null) }} />
     </div>
   )
 }

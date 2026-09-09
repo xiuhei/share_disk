@@ -1,4 +1,4 @@
-import { File, Device, Transfer, Share, User, ApiResponse } from './types'
+import { File, Device, Transfer, Share, User } from './types'
 
 const API_BASE = '/api'
 
@@ -56,6 +56,13 @@ class ApiClient {
 
   async getFile(id: string): Promise<File> {
     return this.request(`/catalog/files/${id}`)
+  }
+
+  async replicateFile(fileId: string, targetDeviceId: string): Promise<Transfer> {
+    return this.request('/transfers/', {
+      method: 'POST',
+      body: JSON.stringify({ file_id: fileId, target_device_id: targetDeviceId }),
+    })
   }
 
   async createFolder(name: string, parentId?: string): Promise<File> {
@@ -140,6 +147,7 @@ class ApiClient {
   // Upload (tus)
   async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<string> {
     // TODO: Implement tus upload
+    void file
     return new Promise((resolve) => {
       let progress = 0
       const interval = setInterval(() => {
@@ -155,6 +163,7 @@ class ApiClient {
 
   // Download
   async downloadFile(id: string, name: string): Promise<Blob> {
+    void name
     const response = await fetch(`${API_BASE}/catalog/files/${id}/download`, {
       headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
     })

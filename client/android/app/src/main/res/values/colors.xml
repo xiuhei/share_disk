@@ -1,12 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ink">#18231D</color>
-    <color name="forest">#126B4E</color>
-    <color name="forest_dark">#0C503B</color>
-    <color name="mint">#E0F4E9</color>
-    <color name="line">#E0E7E2</color>
-    <color name="danger">#AD3D34</color>
-    <color name="paper">#F4F7F5</color>
+    <color name="ink">#17201F</color>
+    <color name="forest">#087F68</color>
+    <color name="forest_dark">#066653</color>
+    <color name="mint">#E3F5F0</color>
+    <color name="line">#DFE7E4</color>
+    <color name="danger">#D94545</color>
+    <color name="paper">#F4F7F6</color>
     <color name="card">#FFFFFF</color>
-    <color name="muted">#69776F</color>
+    <color name="muted">#687472</color>
+    <color name="success_bg">#E8F7F1</color>
+    <color name="warning_bg">#FFF7E6</color>
+    <color name="warning_text">#8A5A00</color>
+    <color name="error_bg">#FFF0F0</color>
+    <color name="error_text">#B4232C</color>
+    <color name="lan_bg">#E7F3FF</color>
+    <color name="lan_text">#1769AA</color>
+    <color name="public_bg">#F1EBFF</color>
+    <color name="public_text">#6941C6</color>
+    <color name="offline_bg">#EEF1F0</color>
 </resources>

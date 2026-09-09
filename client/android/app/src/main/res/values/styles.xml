@@ -4,8 +4,8 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:colorAccent">@color/forest</item>
         <item name="android:navigationBarColor">@color/ink</item>
-        <item name="android:statusBarColor">@color/ink</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/card</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowBackground">@color/paper</item>
     </style>
 
@@ -15,6 +15,7 @@
         <item name="android:textColor">@android:color/white</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:textStyle">bold</item>
+        <item name="android:minHeight">48dp</item>
     </style>
 
     <style name="SecondaryButton" parent="android:style/Widget.Material.Button">
@@ -22,20 +23,28 @@
         <item name="android:backgroundTint">@color/mint</item>
         <item name="android:textColor">@color/forest_dark</item>
         <item name="android:textAllCaps">false</item>
-    </style>
-
-    <style name="TabButton" parent="SecondaryButton">
-        <item name="android:layout_width">wrap_content</item>
-        <item name="android:minWidth">88dp</item>
-        <item name="android:layout_marginEnd">8dp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:minHeight">48dp</item>
     </style>
 
     <style name="SectionTitle">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">@color/ink</item>
-        <item name="android:textSize">20sp</item>
+        <item name="android:textSize">17sp</item>
         <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PageTitle" parent="SectionTitle">
+        <item name="android:textSize">26sp</item>
+    </style>
+
+    <style name="SectionDescription">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textColor">@color/muted</item>
+        <item name="android:textSize">13sp</item>
     </style>
 
     <style name="AppField" parent="android:style/Widget.Material.EditText">
@@ -44,5 +53,114 @@
         <item name="android:backgroundTint">@color/forest</item>
         <item name="android:textColor">@color/ink</item>
         <item name="android:textColorHint">@color/muted</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="ToolbarButton" parent="SecondaryButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">44dp</item>
+        <item name="android:minWidth">64dp</item>
+        <item name="android:minHeight">44dp</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="ToolbarIconButton" parent="android:style/Widget.Material.ImageButton">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:background">?android:attr/selectableItemBackgroundBorderless</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:tint">@color/muted</item>
+    </style>
+
+    <style name="CompactToolbarIconButton" parent="ToolbarIconButton">
+        <item name="android:layout_width">42dp</item>
+        <item name="android:layout_height">42dp</item>
+        <item name="android:minWidth">42dp</item>
+        <item name="android:minHeight">42dp</item>
+        <item name="android:padding">10dp</item>
+    </style>
+
+    <style name="CompactTextButton" parent="android:style/Widget.Material.Button.Borderless">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/muted</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="FieldLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:textColor">@color/muted</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="BottomNavButton" parent="android:style/Widget.Material.Button.Borderless">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/nav_item_background</item>
+        <item name="android:drawableTint">@color/nav_item_tint</item>
+        <item name="android:drawablePadding">0dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/nav_item_tint</item>
+        <item name="android:textSize">0sp</item>
+    </style>
+
+    <style name="BottomNavIconButton" parent="android:style/Widget.Material.ImageButton">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:background">@drawable/nav_item_background</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:padding">20dp</item>
+        <item name="android:scaleType">centerInside</item>
+        <item name="android:tint">@color/nav_item_tint</item>
+    </style>
+
+    <style name="ProfileRow" parent="android:style/Widget.Material.Button.Borderless">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">52dp</item>
+        <item name="android:gravity">center_vertical|start</item>
+        <item name="android:minHeight">52dp</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="CompactActionButton" parent="android:style/Widget.Material.Button.Borderless">
+        <item name="android:layout_width">56dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:minWidth">56dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/forest_dark</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="CompactAddButton" parent="android:style/Widget.Material.Button">
+        <item name="android:layout_width">80dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:layout_marginEnd">2dp</item>
+        <item name="android:backgroundTint">@color/forest</item>
+        <item name="android:minWidth">80dp</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:padding">0dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/card</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
     </style>
 </resources>

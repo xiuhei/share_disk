@@ -147,24 +147,21 @@ func (h *LocalHandler) handleImport(ctx context.Context, req *sharediskv1.Import
 		return errResponse("IMPORT_FAILED", err.Error())
 	}
 
-	entryID := ""
-	if h.endpoint != "" {
-		owner, ownerErr := h.ownerUserID(ctx)
-		if ownerErr != nil {
-			return errResponse("COORDINATOR_NOT_PROVISIONED", "provision the Agent before importing account files")
-		}
-		name := strings.TrimSpace(req.GetName())
-		if name == "" {
-			name = filepath.Base(req.GetSourcePath())
-		}
-		normalized, normalizeErr := storagecatalog.NormalizeName(name)
-		if normalizeErr != nil {
-			return errResponse("INVALID_NAME", normalizeErr.Error())
-		}
-		entryID = uuid.NewString()
-		if _, err := h.store.GetStore().CreateLANFileCoordinated(ctx, entryID, owner, info.Hash.String(), name, normalized, "application/octet-stream", h.endpoint); err != nil {
-			return localLifecycleError(err)
-		}
+	owner, ownerErr := h.ownerUserID(ctx)
+	if ownerErr != nil {
+		return errResponse("COORDINATOR_NOT_PROVISIONED", "provision the Agent before importing account files")
+	}
+	name := strings.TrimSpace(req.GetName())
+	if name == "" {
+		name = filepath.Base(req.GetSourcePath())
+	}
+	normalized, normalizeErr := storagecatalog.NormalizeName(name)
+	if normalizeErr != nil {
+		return errResponse("INVALID_NAME", normalizeErr.Error())
+	}
+	entryID := uuid.NewString()
+	if _, err := h.store.GetStore().CreateLANFileCoordinated(ctx, entryID, owner, info.Hash.String(), name, normalized, "application/octet-stream", h.endpoint); err != nil {
+		return localLifecycleError(err)
 	}
 	return &sharediskv1.LocalResponse{
 		Payload: &sharediskv1.LocalResponse_Import{
@@ -184,6 +181,9 @@ func (h *LocalHandler) ownerUserID(ctx context.Context) (string, error) {
 	}
 	var owner string
 	err := h.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='control_user_id'`).Scan(&owner)
+	if err == sql.ErrNoRows && h.endpoint == "" {
+		return "local-" + h.deviceID, nil
+	}
 	return owner, err
 }
 

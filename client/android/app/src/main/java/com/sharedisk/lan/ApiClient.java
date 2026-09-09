@@ -75,7 +75,7 @@ final class ApiClient {
 			String peerId = prefs.getString("peer_id", "");
 			if (peerId.isEmpty()) {
 				peerId = UUID.randomUUID().toString();
-				prefs.edit().putString("peer_id", peerId).commit();
+				prefs.edit().putString("peer_id", peerId).apply();
 			}
 			JSONObject enroll = new JSONObject()
 					.put("account", account)
@@ -187,7 +187,11 @@ final class ApiClient {
 	}
 
 	void moveFile(LanFile file, FolderInfo folder) throws Exception {
-		JSONObject body = new JSONObject().put("file_ids", new JSONArray().put(file.id)).put("folder_id", folder.id);
+		moveFile(file, folder.id);
+	}
+
+	void moveFile(LanFile file, String folderId) throws Exception {
+		JSONObject body = new JSONObject().put("file_ids", new JSONArray().put(file.id)).put("folder_id", folderId);
 		HttpURLConnection connection = open(saved("control_url") + "/v1/catalog/files/move", "POST", true);
 		byte[] encoded = body.toString().getBytes(StandardCharsets.UTF_8);
 		connection.setRequestProperty("Content-Type", "application/json");

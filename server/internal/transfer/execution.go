@@ -67,6 +67,7 @@ func (r *Repository) CreateReplicaTask(ctx context.Context, userID, fileID, targ
 		SELECT e.object_id::text
 		FROM file_entries e
 		JOIN devices d ON d.id=$3 AND d.user_id=e.user_id AND d.status='active'
+			AND d.last_seen_at > NOW() - INTERVAL '2 minutes'
 		WHERE e.id=$1 AND e.user_id=$2 AND e.status='active'
 	`, fileID, userID, targetDeviceID).Scan(&objectID)
 	if err == sql.ErrNoRows {
@@ -105,6 +106,7 @@ func (r *Repository) CreateReplicaTask(ctx context.Context, userID, fileID, targ
 				row_number() OVER (ORDER BY d.last_seen_at DESC NULLS LAST,r.updated_at DESC)::integer
 		FROM replicas r
 		JOIN devices d ON d.id=r.device_id AND d.user_id=r.user_id AND d.status='active'
+			AND d.last_seen_at > NOW() - INTERVAL '2 minutes'
 		WHERE r.user_id=$2 AND r.object_id=$3 AND r.device_id<>$4
 		  AND r.state='ready' AND r.endpoint IS NOT NULL AND r.client_file_id IS NOT NULL
 	`, task.ID, userID, objectID, targetDeviceID)
@@ -137,7 +139,7 @@ func (r *Repository) ClaimNext(ctx context.Context, userID, deviceID string, lea
 		WHERE t.user_id=$1 AND t.target_device_id=$2
 		  AND t.state IN ('queued','assigned','discovering','connecting','transferring','verifying','retry_wait','waiting_source')
 		  AND (t.lease_until IS NULL OR t.lease_until<=NOW())
-		  AND EXISTS(SELECT 1 FROM replicas r JOIN devices d ON d.id=r.device_id AND d.user_id=r.user_id AND d.status='active' WHERE r.user_id=t.user_id AND r.object_id=t.object_id AND r.device_id<>t.target_device_id AND r.state='ready' AND r.endpoint IS NOT NULL AND r.client_file_id IS NOT NULL)
+		  AND EXISTS(SELECT 1 FROM replicas r JOIN devices d ON d.id=r.device_id AND d.user_id=r.user_id AND d.status='active' AND d.last_seen_at > NOW() - INTERVAL '2 minutes' WHERE r.user_id=t.user_id AND r.object_id=t.object_id AND r.device_id<>t.target_device_id AND r.state='ready' AND r.endpoint IS NOT NULL AND r.client_file_id IS NOT NULL)
 		ORDER BY t.priority DESC,t.created_at,t.id
 		FOR UPDATE OF t SKIP LOCKED LIMIT 1
 	`, userID, deviceID).Scan(&taskID)
@@ -153,6 +155,7 @@ func (r *Repository) ClaimNext(ctx context.Context, userID, deviceID string, lea
 		FROM transfer_tasks t
 		JOIN replicas r ON r.user_id=t.user_id AND r.object_id=t.object_id AND r.device_id<>t.target_device_id
 		JOIN devices d ON d.id=r.device_id AND d.user_id=r.user_id AND d.status='active'
+			AND d.last_seen_at > NOW() - INTERVAL '2 minutes'
 		WHERE t.id=$1 AND r.state='ready' AND r.endpoint IS NOT NULL AND r.client_file_id IS NOT NULL
 		ON CONFLICT(task_id,source_device_id) DO UPDATE SET rank=EXCLUDED.rank,disabled_at=NULL,updated_at=NOW()
 	`, taskID); err != nil {
@@ -175,6 +178,7 @@ func (r *Repository) ClaimNext(ctx context.Context, userID, deviceID string, lea
 			SELECT ts.source_device_id FROM transfer_sources ts
 			JOIN replicas rr ON rr.object_id=t.object_id AND rr.device_id=ts.source_device_id AND rr.user_id=t.user_id
 			JOIN devices d ON d.id=ts.source_device_id AND d.status='active'
+				AND d.last_seen_at > NOW() - INTERVAL '2 minutes'
 			WHERE ts.task_id=t.id AND ts.disabled_at IS NULL AND rr.state='ready' AND rr.endpoint IS NOT NULL AND rr.client_file_id IS NOT NULL
 			ORDER BY ts.rank,d.last_seen_at DESC NULLS LAST LIMIT 1
 		) s ON TRUE

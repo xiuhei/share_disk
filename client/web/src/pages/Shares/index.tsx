@@ -10,6 +10,7 @@ import {
   Check
 } from 'lucide-react'
 import { formatDate } from '../../utils/helpers'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
 interface ShareLink {
   id: string
@@ -52,6 +53,8 @@ const mockShares: ShareLink[] = [
 export default function SharesPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [shares, setShares] = useState(mockShares)
+  const [pendingRevoke, setPendingRevoke] = useState<ShareLink | null>(null)
 
   const handleCopy = async (url: string, id: string) => {
     await navigator.clipboard.writeText(url)
@@ -60,15 +63,9 @@ export default function SharesPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="page-shell">
       {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">分享管理</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            管理已创建的分享链接
-          </p>
-        </div>
+      <div className="mb-6 flex items-center justify-end">
         <button 
           className="btn btn-primary"
           onClick={() => setShowCreateModal(true)}
@@ -78,22 +75,9 @@ export default function SharesPage() {
         </button>
       </div>
 
-      {/* Info Banner */}
-      <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl mb-6">
-        <Shield size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
-            分享链接安全提示
-          </p>
-          <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-            分享链接默认 24 小时有效，建议设置密码保护
-          </p>
-        </div>
-      </div>
-
       {/* Share List */}
       <div className="flex-1 overflow-auto space-y-3">
-        {mockShares.map(share => (
+        {shares.map(share => (
           <div
             key={share.id}
             className="card hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
@@ -145,7 +129,7 @@ export default function SharesPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-1">
-                <button className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                <button onClick={() => setPendingRevoke(share)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" aria-label={`取消 ${share.fileName} 的分享`} title="取消分享">
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -153,7 +137,7 @@ export default function SharesPage() {
           </div>
         ))}
 
-        {mockShares.length === 0 && (
+        {shares.length === 0 && (
           <div className="text-center py-12">
             <Share2 size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
             <p className="text-gray-500 dark:text-gray-400">暂无分享链接</p>
@@ -164,7 +148,7 @@ export default function SharesPage() {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl">
+          <div className="modal-panel app-surface w-full max-w-md rounded-2xl border shadow-xl">
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 创建分享链接
@@ -224,6 +208,7 @@ export default function SharesPage() {
           </div>
         </div>
       )}
+      <ConfirmDialog open={pendingRevoke !== null} title={`取消“${pendingRevoke?.fileName || ''}”的分享？`} confirmLabel="取消分享" destructive onCancel={() => setPendingRevoke(null)} onConfirm={() => { if (pendingRevoke) setShares(current => current.filter(share => share.id !== pendingRevoke.id)); setPendingRevoke(null) }} />
     </div>
   )
 }

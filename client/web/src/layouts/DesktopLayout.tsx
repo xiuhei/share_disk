@@ -1,121 +1,151 @@
-import { ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
-import { 
-  FolderOpen, 
-  ArrowUpDown, 
-  Monitor, 
-  Trash2, 
-  Share2, 
-  Settings,
-  Search,
-  Bell,
-  User
+import { ReactNode, useEffect, useRef, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import {
+  ArrowUpDown, FolderOpen, HardDrive, Monitor, RefreshCw,
+  Search, Settings, Share2, Trash2
 } from 'lucide-react'
-import { useTheme } from '../contexts/ThemeContext'
 
-const navItems = [
-  { path: '/files', icon: FolderOpen, label: '文件' },
-  { path: '/transfers', icon: ArrowUpDown, label: '传输' },
-  { path: '/devices', icon: Monitor, label: '设备' },
-  { path: '/trash', icon: Trash2, label: '回收站' },
-  { path: '/shares', icon: Share2, label: '分享' },
-  { path: '/settings', icon: Settings, label: '设置' },
+const navGroups = [
+  {
+    label: '工作区',
+    items: [
+      { path: '/files', icon: FolderOpen, label: '全部文件' },
+      { path: '/transfers', icon: ArrowUpDown, label: '传输任务', badge: '2' },
+      { path: '/shares', icon: Share2, label: '我的分享' },
+    ],
+  },
+  {
+    label: '系统',
+    items: [
+      { path: '/devices', icon: Monitor, label: '设备' },
+      { path: '/trash', icon: Trash2, label: '回收站' },
+      { path: '/settings', icon: Settings, label: '设置' },
+    ],
+  },
 ]
 
-interface DesktopLayoutProps {
-  children: ReactNode
+const titles: Record<string, string> = {
+  '/files': '我的文件', '/transfers': '传输任务', '/shares': '我的分享',
+  '/devices': '设备', '/trash': '回收站', '/settings': '设置',
 }
 
-export default function DesktopLayout({ children }: DesktopLayoutProps) {
-  const { isDark, toggle } = useTheme()
+export default function DesktopLayout({ children }: { children: ReactNode }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [refreshState, setRefreshState] = useState<'idle' | 'refreshing' | 'done'>('idle')
+  const searchInput = useRef<HTMLInputElement>(null)
+  const refreshTimer = useRef<number | null>(null)
+
+  const publishSearch = (value: string) => {
+    setQuery(value)
+    window.dispatchEvent(new CustomEvent('share-disk-search', { detail: value }))
+  }
+  const toggleSearch = () => {
+    if (!searchOpen) {
+      if (location.pathname !== '/files') navigate('/files')
+      setSearchOpen(true)
+      window.setTimeout(() => searchInput.current?.focus(), 0)
+      return
+    }
+    setSearchOpen(false)
+    publishSearch('')
+  }
+
+  const refresh = () => {
+    if (refreshState === 'refreshing') return
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current)
+    setRefreshState('refreshing')
+    window.dispatchEvent(new Event('share-disk-refresh'))
+    refreshTimer.current = window.setTimeout(() => {
+      setRefreshState('done')
+      refreshTimer.current = window.setTimeout(() => setRefreshState('idle'), 1400)
+    }, 650)
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        if (location.pathname !== '/files') navigate('/files')
+        setSearchOpen(true)
+        window.setTimeout(() => searchInput.current?.focus(), 0)
+      } else if (event.key === 'Escape' && searchOpen) {
+        setSearchOpen(false)
+        publishSearch('')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [location.pathname, navigate, searchOpen])
+
+  useEffect(() => () => {
+    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current)
+  }, [])
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Sidebar */}
-      <aside className="w-60 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
-        {/* Logo */}
-        <div className="h-16 flex items-center gap-3 px-5 border-b border-gray-200 dark:border-gray-700">
-          <div className="w-10 h-10 rounded-xl bg-primary-400 flex items-center justify-center">
-            <span className="text-white font-bold text-lg">S</span>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+      <aside className="app-surface flex w-56 shrink-0 flex-col border-r px-3 py-4">
+        <button onClick={() => navigate('/files')} className="mb-7 flex items-center gap-3 px-2 text-left" aria-label="返回全部文件">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[14px] bg-primary-600 text-white shadow-sm">
+            <HardDrive size={21} strokeWidth={2} />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Share Disk</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">分布式云盘</p>
+            <div className="font-semibold tracking-tight">Share Disk</div>
+            <div className="app-muted text-xs">私人云空间</div>
           </div>
-        </div>
+        </button>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map(({ path, icon: Icon, label }) => (
-            <NavLink
-              key={path}
-              to={path}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-500 dark:text-primary-400 font-medium'
-                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
-                }`
-              }
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-            </NavLink>
+        <nav className="flex-1 space-y-6" aria-label="主导航">
+          {navGroups.map(group => (
+            <div key={group.label}>
+              <div className="app-muted mb-2 px-3 text-xs font-medium uppercase tracking-[.12em]">{group.label}</div>
+              <div className="space-y-1">
+                {group.items.map(({ path, icon: Icon, label, badge }) => (
+                  <NavLink key={path} to={path} className={({ isActive }) =>
+                    `flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
+                      isActive ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : 'app-muted hover:bg-black/[.035] hover:text-gray-900 dark:hover:bg-white/[.05] dark:hover:text-white'
+                    }`
+                  }>
+                    <Icon size={19} strokeWidth={1.8} />
+                    <span className="flex-1">{label}</span>
+                    {badge && <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900 dark:text-primary-300">{badge}</span>}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
-        {/* Storage Info */}
-        <div className="px-4 py-4 border-t border-gray-200 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">存储空间</div>
-          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div className="h-full bg-primary-400 rounded-full" style={{ width: '35%' }} />
+        <div className="rounded-2xl bg-[var(--surface-soft)] p-3.5">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <span className="font-medium">存储空间</span><span className="app-muted">35%</span>
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">3.5 GB / 10 GB</div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10"><div className="h-full w-[35%] rounded-full bg-primary-600" /></div>
+          <div className="app-muted mt-2 text-xs">3.5 GB / 10 GB</div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-          {/* Search */}
-          <div className="flex-1 max-w-xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input
-                type="text"
-                placeholder="搜索文件..."
-                className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 border-0 rounded-lg text-sm focus:ring-2 focus:ring-primary-400 focus:bg-white dark:focus:bg-gray-600 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-4 ml-4">
-            <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-              <Bell size={20} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="app-surface flex h-[72px] shrink-0 items-center gap-5 border-b px-7">
+          <div className="min-w-[120px] text-sm font-semibold">{titles[location.pathname] || 'Share Disk'}</div>
+          <div className="ml-auto flex min-w-0 items-center gap-1">
+            {searchOpen && <label className="relative mr-2 block w-[min(420px,38vw)]">
+              <Search className="app-muted absolute left-3 top-1/2 -translate-y-1/2" size={17} />
+              <input ref={searchInput} value={query} onChange={event => publishSearch(event.target.value)} type="search" placeholder="搜索文件名" className="input h-10 min-h-10 border-transparent bg-[var(--surface-soft)] pl-9" />
+            </label>}
+            <button onClick={toggleSearch} className={`icon-button ${searchOpen ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : ''}`} aria-label={searchOpen ? '关闭搜索' : '搜索'} aria-expanded={searchOpen} title="搜索"><Search size={20} /></button>
+            <span className={`mr-1 text-xs font-medium transition-opacity ${refreshState === 'idle' ? 'pointer-events-none opacity-0' : 'app-muted opacity-100'}`} role="status" aria-live="polite">
+              {refreshState === 'refreshing' ? '刷新中…' : '已刷新'}
+            </span>
+            <button onClick={refresh} disabled={refreshState === 'refreshing'} className="icon-button disabled:cursor-default disabled:opacity-70" aria-label={refreshState === 'refreshing' ? '正在刷新' : '刷新'} title="刷新">
+              <RefreshCw size={20} className={refreshState === 'refreshing' ? 'animate-spin' : ''} />
             </button>
-            <button
-              onClick={toggle}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              {isDark ? '☀️' : '🌙'}
-            </button>
-            <div className="w-px h-6 bg-gray-200 dark:bg-gray-700" />
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                <User size={16} className="text-primary-600 dark:text-primary-400" />
-              </div>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">用户</span>
-            </button>
+            <button onClick={() => navigate('/settings')} className={`icon-button ${location.pathname === '/settings' ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : ''}`} aria-label="设置" title="设置"><Settings size={20} /></button>
           </div>
         </header>
-
-        {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6">
-          {children}
-        </main>
+        <main className="min-h-0 flex-1 overflow-auto p-7">{children}</main>
       </div>
     </div>
   )

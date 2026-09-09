@@ -10,6 +10,7 @@ import {
   Clock
 } from 'lucide-react'
 import { formatFileSize } from '../../utils/helpers'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
 interface TransferTask {
   id: string
@@ -42,21 +43,15 @@ function StatusIcon({ status }: { status: TransferTask['status'] }) {
 
 export default function TransfersPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'upload' | 'download'>('all')
+  const [transfers, setTransfers] = useState(mockTransfers)
+  const [pendingCancel, setPendingCancel] = useState<TransferTask | null>(null)
 
-  const filteredTransfers = mockTransfers.filter(t => 
+  const filteredTransfers = transfers.filter(t =>
     activeTab === 'all' || t.type === activeTab
   )
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">传输管理</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          查看和管理文件传输任务
-        </p>
-      </div>
-
+    <div className="page-shell">
       {/* Tabs */}
       <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg mb-6 w-fit">
         {[
@@ -150,7 +145,7 @@ export default function TransfersPage() {
                     <button className="p-2 text-gray-400 hover:text-yellow-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                       <Pause size={16} />
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <button onClick={() => setPendingCancel(transfer)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" aria-label={`取消 ${transfer.name} 的传输`}>
                       <X size={16} />
                     </button>
                   </>
@@ -159,7 +154,7 @@ export default function TransfersPage() {
                     <button className="p-2 text-gray-400 hover:text-green-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                       <Play size={16} />
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <button onClick={() => setPendingCancel(transfer)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" aria-label={`取消 ${transfer.name} 的传输`}>
                       <X size={16} />
                     </button>
                   </>
@@ -176,6 +171,7 @@ export default function TransfersPage() {
           </div>
         )}
       </div>
+      <ConfirmDialog open={pendingCancel !== null} title={`取消“${pendingCancel?.name || ''}”的传输？`} confirmLabel="取消传输" destructive onCancel={() => setPendingCancel(null)} onConfirm={() => { if (pendingCancel) setTransfers(current => current.filter(transfer => transfer.id !== pendingCancel.id)); setPendingCancel(null) }} />
     </div>
   )
 }

@@ -9,6 +9,20 @@ export interface File {
   modifiedAt: string
   isFolder: boolean
   parentId?: string
+  originDeviceId?: string
+  originDeviceName?: string
+  available?: boolean
+  replicas?: FileReplica[]
+}
+
+export interface FileReplica {
+  deviceId: string
+  deviceName: string
+  platform: string
+  state: 'pending' | 'ready' | 'missing' | 'corrupt' | 'deleting' | 'deleted'
+  online: boolean
+  isOrigin: boolean
+  lastSeenAt?: string
 }
 
 export interface Device {

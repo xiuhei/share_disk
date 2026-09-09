@@ -35,7 +35,7 @@ final class SecureCredentials {
         String legacy = prefs.getString(name, "");
         if (!legacy.isEmpty()) {
             put(name, legacy);
-            prefs.edit().remove(name).commit();
+            prefs.edit().remove(name).apply();
         }
         return legacy;
     }
