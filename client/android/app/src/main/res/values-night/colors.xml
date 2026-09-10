@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ink">#F1F3F4</color>
+    <color name="forest">#AEB4B8</color>
+    <color name="forest_dark">#7EE0B8</color>
+    <color name="mint">#35393D</color>
+    <color name="line">#3C4146</color>
+    <color name="danger">#FF8585</color>
+    <color name="paper">#17191B</color>
+    <color name="card">#232629</color>
+    <color name="muted">#A7ADB2</color>
+    <color name="success_bg">#173D31</color>
+    <color name="warning_bg">#3B3830</color>
+    <color name="warning_text">#E1C98D</color>
+    <color name="error_bg">#3D3032</color>
+    <color name="error_text">#FFABAF</color>
+    <color name="lan_bg">#18344A</color>
+    <color name="lan_text">#8CCBFF</color>
+    <color name="public_bg">#34284A</color>
+    <color name="public_text">#C7A8FF</color>
+    <color name="offline_bg">#34383C</color>
+</resources>

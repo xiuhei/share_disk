@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import { 
-  User, 
-  Lock, 
-  Bell, 
-  Palette, 
-  HardDrive, 
+import {
+  User,
+  Bell,
+  Palette,
   Save,
   LogOut,
   Moon,
@@ -20,10 +18,8 @@ export default function SettingsPage() {
 
   const sections = [
     { key: 'account', label: '账户设置', icon: User },
-    { key: 'security', label: '安全设置', icon: Lock },
     { key: 'notifications', label: '通知设置', icon: Bell },
     { key: 'appearance', label: '外观设置', icon: Palette },
-    { key: 'storage', label: '存储管理', icon: HardDrive },
   ]
 
   return (
@@ -93,48 +89,6 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeSection === 'security' && (
-            <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">安全设置</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    当前密码
-                  </label>
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder="请输入当前密码"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    新密码
-                  </label>
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder="请输入新密码"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    确认新密码
-                  </label>
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder="请再次输入新密码"
-                  />
-                </div>
-                <button className="btn btn-primary">
-                  <Save size={16} />
-                  更新密码
-                </button>
-              </div>
-            </div>
-          )}
-
           {activeSection === 'notifications' && (
             <div className="card">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">通知设置</h3>
@@ -186,40 +140,6 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {activeSection === 'storage' && (
-            <div className="space-y-6">
-              <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">存储空间</h3>
-                <div className="mb-4">
-                  <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mb-2">
-                    <span>已使用 3.5 GB</span>
-                    <span>总计 10 GB</span>
-                  </div>
-                  <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary-400 rounded-full" style={{ width: '35%' }} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div className="text-gray-500 dark:text-gray-400">文档</div>
-                    <div className="font-medium text-gray-900 dark:text-white">1.2 GB</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div className="text-gray-500 dark:text-gray-400">图片</div>
-                    <div className="font-medium text-gray-900 dark:text-white">1.5 GB</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div className="text-gray-500 dark:text-gray-400">视频</div>
-                    <div className="font-medium text-gray-900 dark:text-white">0.6 GB</div>
-                  </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div className="text-gray-500 dark:text-gray-400">其他</div>
-                    <div className="font-medium text-gray-900 dark:text-white">0.2 GB</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

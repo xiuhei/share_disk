@@ -8,7 +8,9 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -64,6 +66,7 @@ public final class MainActivity extends Activity {
     private static final String STATE_QUERY = "query";
     private static final String STATE_SORT = "sort";
     private static final String STATE_FILTER = "filter";
+    private static final String STATE_DEVICE_FILTER = "device_filter";
     private static final String STATE_SEARCH_VISIBLE = "search_visible";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -94,7 +97,7 @@ public final class MainActivity extends Activity {
     private Spinner sortSpinner;
     private Button createFolderButton;
     private ImageButton viewModeButton;
-    private Spinner filterSpinner;
+    private Button filterSpinner;
     private Spinner deviceFilterSpinner;
     private View selectionBar;
     private TextView selectionCount;
@@ -124,7 +127,6 @@ public final class MainActivity extends Activity {
     private boolean previewMode;
     private boolean busy;
     private boolean ignoreInitialSortEvent = true;
-    private boolean ignoreInitialFilterEvent = true;
     private Runnable pendingSearch;
     private LinearLayout currentSection;
     private boolean settingsVisible;
@@ -135,14 +137,16 @@ public final class MainActivity extends Activity {
     private final List<DeviceInfo> lastDevices = new ArrayList<>();
     private final List<String> deviceFilterIds = new ArrayList<>();
     private final Map<String, String> deviceAliases = new LinkedHashMap<>();
-    private String activeTypeFilter = "all";
+    private final Set<String> activeTypeFilters = new HashSet<>();
     private String activeDeviceFilter = "all";
     private boolean gridView;
     private final Set<String> selectedFileIds = new HashSet<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        applySavedTheme();
         super.onCreate(savedInstanceState);
+        setTheme(R.style.AppTheme);
         setContentView(R.layout.activity_main);
         api = new ApiClient(this);
 
@@ -173,8 +177,7 @@ public final class MainActivity extends Activity {
         viewModeButton = findViewById(R.id.viewModeButton);
         filterSpinner = findViewById(R.id.filterSpinner);
         deviceFilterSpinner = findViewById(R.id.deviceFilterSpinner);
-        filterSpinner.setAdapter(compactSpinnerAdapter(
-                new String[]{"全部", "近 7 天", "图片", "文档", "视频"}));
+        updateFilterButton();
         deviceFilterIds.add("all");
         deviceFilterSpinner.setAdapter(compactSpinnerAdapter(new String[]{"全部设备"}));
         selectionBar = findViewById(R.id.selectionBar);
@@ -202,7 +205,6 @@ public final class MainActivity extends Activity {
         trashSection = findViewById(R.id.trashSection);
         gridView = getSharedPreferences("share_disk", MODE_PRIVATE).getBoolean("grid_view", false);
         updateViewModeButton();
-        selectFilter("all", false);
         discovery = new AgentDiscovery(this, new AgentDiscovery.Listener() {
             @Override public void onAgentFound(String name, String url) {
                 runOnUiThread(() -> addDiscoveredAgent(name, url));
@@ -261,18 +263,7 @@ public final class MainActivity extends Activity {
             updateViewModeButton();
             renderFiles(lastFiles);
         });
-        filterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                String[] filters = {"all", "recent", "images", "documents", "videos"};
-                activeTypeFilter = filters[position];
-                if (ignoreInitialFilterEvent) {
-                    ignoreInitialFilterEvent = false;
-                    return;
-                }
-                renderFiles(lastFiles);
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
-        });
+        filterSpinner.setOnClickListener(v -> showTypeFilterDialog());
         deviceFilterSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (position < 0 || position >= deviceFilterIds.size()) return;
@@ -287,10 +278,9 @@ public final class MainActivity extends Activity {
         findViewById(R.id.selectionMove).setOnClickListener(v -> moveSelection());
         findViewById(R.id.selectionTrash).setOnClickListener(v -> trashSelection());
         findViewById(R.id.profileConnectionButton).setOnClickListener(v -> showSettings());
-        findViewById(R.id.profileStorageButton).setOnClickListener(v -> setStatus("存储偏好将跟随所连接的存储设备策略"));
-        findViewById(R.id.profileTransferButton).setOnClickListener(v -> showSection(transfersSection, transfersTab));
-        findViewById(R.id.profileAppearanceButton).setOnClickListener(v -> setStatus("当前使用跟随系统的明亮外观"));
-        findViewById(R.id.profileSecurityButton).setOnClickListener(v -> setStatus("凭据已使用 Android 加密存储保护"));
+        Button appearanceButton = findViewById(R.id.profileAppearanceButton);
+        appearanceButton.setText(isDarkMode() ? "外观 · 深色" : "外观 · 明亮");
+        appearanceButton.setOnClickListener(v -> showAppearanceDialog());
         findViewById(R.id.profileAboutButton).setOnClickListener(v -> new AlertDialog.Builder(this)
                 .setTitle("Share Disk")
                 .setMessage("私人分布式云盘 · Android 0.3.0\n数据优先保存在你自己的设备上。")
@@ -332,15 +322,16 @@ public final class MainActivity extends Activity {
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
+        Bundle uiState = savedInstanceState != null ? savedInstanceState : persistentUiState();
+        if (uiState != null) restoreUiState(uiState);
         if (api.hasSession()) {
             connectionPanel.setVisibility(View.GONE);
-            if (savedInstanceState != null) restoreUiState(savedInstanceState);
-            else showSection(filesSection, filesTab);
+            if (uiState == null) showSection(filesSection, filesTab);
             setStatus("已有登录会话，正在读取设备文件…");
             if (!settingsVisible) refreshFiles();
         } else {
             showPreview();
-            if (savedInstanceState != null && savedInstanceState.getBoolean(STATE_SETTINGS, false)) restoreUiState(savedInstanceState);
+            if (uiState != null && settingsVisible) showSettings();
         }
         handleLaunchIntent(getIntent());
     }
@@ -378,9 +369,9 @@ public final class MainActivity extends Activity {
             return;
         }
         if (agent.isEmpty()) {
-            agentUrl.setError("请输入或自动发现存储 Agent");
+            agentUrl.setError("请输入或自动发现文件设备服务");
             agentUrl.requestFocus();
-            setStatus("请填写存储 Agent 地址，或使用自动发现");
+            setStatus("请填写文件设备服务地址，或使用自动发现");
             return;
         }
         if (accountValue.isEmpty()) {
@@ -614,6 +605,38 @@ public final class MainActivity extends Activity {
         return adapter;
     }
 
+    private void showTypeFilterDialog() {
+        String[] labels = {"文件夹", "图片", "文档", "视频", "音频", "其他"};
+        String[] values = {"folders", "images", "documents", "videos", "audio", "other"};
+        boolean[] checked = new boolean[values.length];
+        Set<String> draft = new HashSet<>(activeTypeFilters);
+        for (int i = 0; i < values.length; i++) checked[i] = draft.contains(values[i]);
+        new AlertDialog.Builder(this)
+                .setTitle("文件类型")
+                .setMultiChoiceItems(labels, checked, (dialog, which, selected) -> {
+                    if (selected) draft.add(values[which]); else draft.remove(values[which]);
+                })
+                .setNeutralButton("全部", (dialog, which) -> {
+                    activeTypeFilters.clear();
+                    updateFilterButton();
+                    renderFiles(lastFiles);
+                    persistUiState();
+                })
+                .setNegativeButton("取消", null)
+                .setPositiveButton("应用", (dialog, which) -> {
+                    activeTypeFilters.clear();
+                    activeTypeFilters.addAll(draft);
+                    updateFilterButton();
+                    renderFiles(lastFiles);
+                    persistUiState();
+                })
+                .show();
+    }
+
+    private void updateFilterButton() {
+        filterSpinner.setText(activeTypeFilters.isEmpty() ? "全部类型" : "已选 " + activeTypeFilters.size() + " 类");
+    }
+
     private interface Loader<T> {
         T load() throws Exception;
     }
@@ -792,6 +815,9 @@ public final class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.VERTICAL);
             styleCard(row);
+            row.setPadding(dp(13), dp(10), dp(13), dp(10));
+            LinearLayout.LayoutParams compactCardParams = (LinearLayout.LayoutParams) row.getLayoutParams();
+            compactCardParams.bottomMargin = dp(7);
             LinearLayout titleRow = new LinearLayout(this);
             titleRow.setOrientation(LinearLayout.HORIZONTAL);
             titleRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -801,6 +827,13 @@ public final class MainActivity extends Activity {
             name.setTextSize(16);
             name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             titleRow.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            boolean lan = device.isOnline() && "lan".equals(device.connectionMode);
+            TextView connection = coloredBadge(connectionLabel(device),
+                    lan ? R.color.lan_text : device.isOnline() ? R.color.public_text : R.color.muted,
+                    lan ? R.color.lan_bg : device.isOnline() ? R.color.public_bg : R.color.offline_bg);
+            LinearLayout.LayoutParams connectionParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            connectionParams.rightMargin = dp(6);
+            titleRow.addView(connection, connectionParams);
             titleRow.addView(coloredBadge(device.isOnline() ? "在线" : "离线",
                     device.isOnline() ? R.color.forest_dark : R.color.muted,
                     device.isOnline() ? R.color.success_bg : R.color.offline_bg));
@@ -814,14 +847,6 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams metaParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             metaParams.topMargin = dp(5);
             row.addView(meta, metaParams);
-
-            boolean lan = device.isOnline() && "lan".equals(device.connectionMode);
-            TextView connection = coloredBadge(connectionLabel(device),
-                    lan ? R.color.lan_text : device.isOnline() ? R.color.public_text : R.color.muted,
-                    lan ? R.color.lan_bg : device.isOnline() ? R.color.public_bg : R.color.offline_bg);
-            LinearLayout.LayoutParams connectionParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            connectionParams.topMargin = dp(10);
-            row.addView(connection, connectionParams);
 
             LinearLayout actions = new LinearLayout(this);
             actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -840,7 +865,7 @@ public final class MainActivity extends Activity {
             manage.setOnClickListener(v -> showDeviceActions(device));
             actions.addView(manage);
             LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            actionsParams.topMargin = dp(10);
+            actionsParams.topMargin = dp(7);
             row.addView(actions, actionsParams);
             deviceList.addView(row);
         }
@@ -978,16 +1003,18 @@ public final class MainActivity extends Activity {
         }
         fileList.removeAllViews();
         String query = searchQuery.getText().toString().trim();
-        fileSummary.setText(getString(query.isEmpty() && "all".equals(activeTypeFilter)
+        fileSummary.setText(getString(query.isEmpty() && activeTypeFilters.isEmpty()
                 ? R.string.file_count_format
                 : R.string.file_match_count_format, visibleFiles.size()));
         if (visibleFiles.isEmpty()) {
-            if (query.isEmpty() && "all".equals(activeTypeFilter)) {
+            if (query.isEmpty() && activeTypeFilters.isEmpty()) {
                 addEmptyState(fileList, "这里还没有文件", "", "上传文件", view -> chooseUpload());
             } else {
                 addEmptyState(fileList, "没有找到匹配文件", "试试其他关键词或文件类型。", "重置筛选", view -> {
                     searchQuery.setText("");
-                    selectFilter("all", true);
+                    activeTypeFilters.clear();
+                    updateFilterButton();
+                    renderFiles(lastFiles);
                 });
             }
             return;
@@ -1003,35 +1030,15 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void selectFilter(String filter, boolean rerender) {
-        activeTypeFilter = filter;
-        int position = "recent".equals(filter) ? 1
-                : "images".equals(filter) ? 2
-                : "documents".equals(filter) ? 3
-                : "videos".equals(filter) ? 4 : 0;
-        if (filterSpinner.getSelectedItemPosition() != position) filterSpinner.setSelection(position);
-        if (rerender) renderFiles(lastFiles);
-    }
-
     private boolean matchesActiveFilter(LanFile file) {
-        switch (activeTypeFilter) {
-        case "images": return file.mime.startsWith("image/");
-        case "videos": return file.mime.startsWith("video/");
-        case "documents":
-            return !file.mime.startsWith("image/")
-                    && !file.mime.startsWith("video/")
-                    && !file.mime.startsWith("audio/")
-                    && !file.mime.contains("zip")
-                    && !file.mime.contains("compressed");
-        case "recent":
-            if (file.updatedAt.isEmpty()) return true;
-            try {
-                return Instant.parse(file.updatedAt).isAfter(Instant.now().minusSeconds(7 * 86400));
-            } catch (Exception ignored) {
-                return true;
-            }
-        default: return true;
-        }
+        if (activeTypeFilters.isEmpty()) return true;
+        if (file.mime.isEmpty()) return activeTypeFilters.contains("folders");
+        if (file.mime.startsWith("image/")) return activeTypeFilters.contains("images");
+        if (file.mime.startsWith("video/")) return activeTypeFilters.contains("videos");
+        if (file.mime.startsWith("audio/")) return activeTypeFilters.contains("audio");
+        boolean document = file.mime.contains("pdf") || file.mime.contains("document")
+                || file.mime.contains("sheet") || file.mime.contains("text") || file.mime.contains("presentation");
+        return activeTypeFilters.contains(document ? "documents" : "other");
     }
 
     private boolean matchesDeviceFilter(LanFile file) {
@@ -1377,27 +1384,88 @@ public final class MainActivity extends Activity {
     }
 
     private void showFileProperties(LanFile file) {
-        StringBuilder message = new StringBuilder();
-        message.append("大小：").append(String.format(Locale.US, "%,d 字节", file.size));
-        message.append("\n类型：").append(file.mime);
-        message.append("\n更新时间：").append(shortTime(file.updatedAt));
-        message.append("\n上传设备：").append(file.originDeviceName.isEmpty() ? "未知设备" : file.originDeviceName);
-        message.append("\n\n文件副本");
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(4), dp(8), dp(4), 0);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(12), dp(12), dp(12), dp(12));
+        header.setBackgroundResource(R.drawable.file_row_background);
+        header.addView(fileIcon(file, 56), new LinearLayout.LayoutParams(dp(56), dp(56)));
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.VERTICAL);
+        heading.setPadding(dp(12), 0, 0, 0);
+        TextView name = new TextView(this);
+        name.setText(file.name);
+        name.setTextColor(getColor(R.color.ink));
+        name.setTextSize(17);
+        name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        name.setMaxLines(2);
+        heading.addView(name);
+        TextView type = new TextView(this);
+        type.setText(file.mime.isEmpty() ? "未知类型" : file.mime);
+        type.setTextColor(getColor(R.color.muted));
+        type.setTextSize(12);
+        heading.addView(type);
+        header.addView(heading, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        content.addView(header);
+
+        LinearLayout facts = new LinearLayout(this);
+        facts.setOrientation(LinearLayout.VERTICAL);
+        facts.setPadding(0, dp(8), 0, dp(4));
+        facts.addView(detailMetric("大小", formatBytes(file.size)));
+        facts.addView(detailMetric("更新时间", shortTime(file.updatedAt)));
+        facts.addView(detailMetric("上传设备", file.originDeviceName.isEmpty() ? "未知设备" : file.originDeviceName));
+        content.addView(facts);
+
+        TextView replicaTitle = new TextView(this);
+        replicaTitle.setText("文件副本");
+        replicaTitle.setTextColor(getColor(R.color.ink));
+        replicaTitle.setTextSize(14);
+        replicaTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        replicaTitle.setPadding(dp(2), dp(8), dp(2), dp(8));
+        content.addView(replicaTitle);
         if (file.replicas.isEmpty()) {
-            message.append("\n暂无可用的副本信息");
+            TextView empty = new TextView(this);
+            empty.setText("暂无副本信息");
+            empty.setTextColor(getColor(R.color.muted));
+            empty.setTextSize(13);
+            empty.setPadding(dp(12), dp(10), dp(12), dp(10));
+            content.addView(empty);
         } else {
             for (FileReplicaInfo replica : file.replicas) {
-                message.append("\n• ").append(replica.deviceName)
-                        .append(replica.origin ? "（上传设备）" : "")
-                        .append(" · ").append(replica.online ? "在线" : "离线")
-                        .append(replica.platform.isEmpty() ? "" : " · " + replica.platform);
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(12), dp(9), dp(12), dp(9));
+                row.setBackgroundResource(R.drawable.file_row_background);
+                TextView replicaName = new TextView(this);
+                replicaName.setText(replica.deviceName + (replica.origin ? " · 上传设备" : ""));
+                replicaName.setTextColor(getColor(R.color.ink));
+                replicaName.setTextSize(13);
+                replicaName.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                row.addView(replicaName, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+                if (!replica.platform.isEmpty()) row.addView(coloredBadge(replica.platform, R.color.muted, R.color.offline_bg));
+                TextView state = coloredBadge(replica.online ? "在线" : "离线",
+                        replica.online ? R.color.forest_dark : R.color.muted,
+                        replica.online ? R.color.success_bg : R.color.offline_bg);
+                LinearLayout.LayoutParams stateParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                stateParams.leftMargin = dp(6);
+                row.addView(state, stateParams);
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                rowParams.bottomMargin = dp(6);
+                content.addView(row, rowParams);
             }
         }
-        message.append(file.available ? "\n\n至少一个在线副本可供下载。" : "\n\n所有副本设备均离线，文件暂不可操作。");
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.addView(content);
 
         AlertDialog.Builder dialog = new AlertDialog.Builder(this)
-                .setTitle(file.name)
-                .setMessage(message.toString())
+                .setTitle("文件详情")
+                .setView(scroll)
                 .setNegativeButton("关闭", null);
         if (file.available) {
             dialog.setNeutralButton("下载", (ignored, which) -> chooseDownload(file));
@@ -1406,6 +1474,25 @@ public final class MainActivity extends Activity {
             });
         }
         dialog.show();
+    }
+
+    private View detailMetric(String labelValue, String value) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(7), dp(12), dp(7));
+        TextView label = new TextView(this);
+        label.setText(labelValue);
+        label.setTextColor(getColor(R.color.muted));
+        label.setTextSize(12);
+        row.addView(label, new LinearLayout.LayoutParams(dp(82), LinearLayout.LayoutParams.WRAP_CONTENT));
+        TextView detail = new TextView(this);
+        detail.setText(value);
+        detail.setTextColor(getColor(R.color.ink));
+        detail.setTextSize(13);
+        detail.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        row.addView(detail, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
     }
 
     private void showPreviewReplication(LanFile file) {
@@ -1469,11 +1556,77 @@ public final class MainActivity extends Activity {
             pendingSearch = null;
         }
         sortSpinner.setSelection(state.getInt(STATE_SORT, 0));
-        selectFilter(state.getString(STATE_FILTER, "all"), false);
+        activeTypeFilters.clear();
+        String savedFilters = state.getString(STATE_FILTER, "");
+        if (!savedFilters.isEmpty()) Collections.addAll(activeTypeFilters, savedFilters.split(","));
+        updateFilterButton();
+        activeDeviceFilter = state.getString(STATE_DEVICE_FILTER, "all");
         showSectionByKey(state.getString(STATE_SECTION, "files"));
         searchPanel.setVisibility(state.getBoolean(STATE_SEARCH_VISIBLE, false) && currentSection == filesSection
                 ? View.VISIBLE : View.GONE);
         if (state.getBoolean(STATE_SETTINGS, false)) showSettings();
+        renderFiles(lastFiles);
+    }
+
+    private Bundle persistentUiState() {
+        SharedPreferences prefs = getSharedPreferences("share_disk", MODE_PRIVATE);
+        if (!prefs.contains("ui_section")) return null;
+        Bundle state = new Bundle();
+        state.putString(STATE_SECTION, prefs.getString("ui_section", "files"));
+        state.putBoolean(STATE_SETTINGS, prefs.getBoolean("ui_settings", false));
+        state.putBoolean(STATE_PREVIEW, prefs.getBoolean("ui_preview", false));
+        state.putString(STATE_FOLDER, prefs.getString("ui_folder", ""));
+        state.putString(STATE_QUERY, prefs.getString("ui_query", ""));
+        state.putInt(STATE_SORT, prefs.getInt("ui_sort", 0));
+        state.putString(STATE_FILTER, prefs.getString("ui_filters", ""));
+        state.putString(STATE_DEVICE_FILTER, prefs.getString("ui_device_filter", "all"));
+        state.putBoolean(STATE_SEARCH_VISIBLE, prefs.getBoolean("ui_search_visible", false));
+        return state;
+    }
+
+    private void persistUiState() {
+        if (sortSpinner == null || searchQuery == null) return;
+        List<String> filters = new ArrayList<>(activeTypeFilters);
+        Collections.sort(filters);
+        getSharedPreferences("share_disk", MODE_PRIVATE).edit()
+                .putString("ui_section", currentSectionKey())
+                .putBoolean("ui_settings", settingsVisible)
+                .putBoolean("ui_preview", previewMode)
+                .putString("ui_folder", selectedFolderId)
+                .putString("ui_query", searchQuery.getText().toString())
+                .putInt("ui_sort", sortSpinner.getSelectedItemPosition())
+                .putString("ui_filters", String.join(",", filters))
+                .putString("ui_device_filter", activeDeviceFilter)
+                .putBoolean("ui_search_visible", searchPanel.getVisibility() == View.VISIBLE)
+                .apply();
+    }
+
+    private boolean isDarkMode() {
+        return getSharedPreferences("share_disk", MODE_PRIVATE).getBoolean("dark_mode", false);
+    }
+
+    private void applySavedTheme() {
+        Configuration configuration = new Configuration(getResources().getConfiguration());
+        configuration.uiMode = (configuration.uiMode & ~Configuration.UI_MODE_NIGHT_MASK)
+                | (isDarkMode() ? Configuration.UI_MODE_NIGHT_YES : Configuration.UI_MODE_NIGHT_NO);
+        getResources().updateConfiguration(configuration, getResources().getDisplayMetrics());
+    }
+
+    private void showAppearanceDialog() {
+        int selected = isDarkMode() ? 1 : 0;
+        new AlertDialog.Builder(this)
+                .setTitle("外观")
+                .setSingleChoiceItems(new String[]{"明亮模式", "深色模式"}, selected, null)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("应用", (dialog, which) -> {
+                    AlertDialog shown = (AlertDialog) dialog;
+                    int choice = shown.getListView().getCheckedItemPosition();
+                    getSharedPreferences("share_disk", MODE_PRIVATE).edit()
+                            .putBoolean("dark_mode", choice == 1).apply();
+                    persistUiState();
+                    recreate();
+                })
+                .show();
     }
 
     private void toggleSearch() {
@@ -1517,6 +1670,8 @@ public final class MainActivity extends Activity {
     }
 
     private void showPreview() {
+        String sectionBeforeRefresh = currentSectionKey();
+        boolean settingsBeforeRefresh = settingsVisible;
         previewMode = true;
         try {
             List<LanFile> files = new ArrayList<>();
@@ -1549,7 +1704,7 @@ public final class MainActivity extends Activity {
             renderTrash(trash);
             renderShares(new ArrayList<>());
             renderBackgroundDownloads(new ArrayList<>());
-            showSection(filesSection, filesTab);
+            if (settingsBeforeRefresh) showSettings(); else showSectionByKey(sectionBeforeRefresh);
             statusPanel.setVisibility(View.GONE);
         } catch (Exception error) {
             previewMode = false;
@@ -2006,6 +2161,12 @@ public final class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        persistUiState();
+        super.onPause();
+    }
+
+    @Override
     protected void onDestroy() {
         destroyed = true;
         if (pendingSearch != null) uiHandler.removeCallbacks(pendingSearch);
@@ -2023,8 +2184,12 @@ public final class MainActivity extends Activity {
         state.putString(STATE_FOLDER, selectedFolderId);
         state.putString(STATE_QUERY, searchQuery.getText().toString());
         state.putInt(STATE_SORT, sortSpinner.getSelectedItemPosition());
-        state.putString(STATE_FILTER, activeTypeFilter);
+        List<String> filters = new ArrayList<>(activeTypeFilters);
+        Collections.sort(filters);
+        state.putString(STATE_FILTER, String.join(",", filters));
+        state.putString(STATE_DEVICE_FILTER, activeDeviceFilter);
         state.putBoolean(STATE_SEARCH_VISIBLE, searchPanel.getVisibility() == View.VISIBLE);
+        persistUiState();
         super.onSaveInstanceState(state);
     }
 

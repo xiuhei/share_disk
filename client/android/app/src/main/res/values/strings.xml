@@ -3,7 +3,7 @@
     <string name="app_name">Share Disk LAN</string>
     <string name="brand">SHARE DISK · 私人云盘</string>
     <string name="control_url_hint">控制服务，例如 http://192.168.1.10:8080</string>
-    <string name="agent_url_hint">存储 Agent，例如 http://192.168.1.10:9090</string>
+    <string name="agent_url_hint">文件设备服务地址，例如 http://192.168.1.10:9090</string>
     <string name="discover_agents">发现附近的存储设备</string>
     <string name="account_hint">账号</string>
     <string name="password_hint">密码</string>
@@ -50,10 +50,7 @@
     <string name="grid_view">网格</string>
     <string name="profile_title">账号与设置</string>
     <string name="connection_settings">账号与服务连接</string>
-    <string name="storage_preferences">存储偏好</string>
-    <string name="transfer_preferences">传输偏好</string>
     <string name="appearance">外观</string>
-    <string name="security">安全</string>
     <string name="about">关于 Share Disk</string>
     <string name="recently_deleted">最近删除</string>
     <string name="file_metadata_format">%1$s · %2$s</string>

@@ -76,7 +76,15 @@ export default function FilesPage() {
   const [path, setPath] = useState<string[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [query, setQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'all' | 'folder' | 'image' | 'document' | 'video' | 'audio' | 'other'>('all')
+  type FileKind = 'folder' | 'image' | 'document' | 'video' | 'audio' | 'other'
+  const typeOptions: { value: FileKind; label: string }[] = [
+    { value: 'folder', label: '文件夹' }, { value: 'image', label: '图片' },
+    { value: 'document', label: '文档' }, { value: 'video', label: '视频' },
+    { value: 'audio', label: '音频' }, { value: 'other', label: '其他' },
+  ]
+  const [typeFilters, setTypeFilters] = useState<FileKind[]>(() => {
+    try { return JSON.parse(localStorage.getItem('file-type-filters') || '[]') as FileKind[] } catch { return [] }
+  })
   const [timeSort, setTimeSort] = useState<'newest' | 'oldest'>('newest')
   const deviceFilter = searchParams.get('device') || 'all'
   const [folderDialog, setFolderDialog] = useState(false)
@@ -93,10 +101,10 @@ export default function FilesPage() {
     const filtered = files.filter(file => {
       const kind = file.isFolder ? 'folder' : getFileType(file.type)
       const matchesDevice = deviceFilter === 'all' || (!file.isFolder && file.replicaDeviceIds?.includes(deviceFilter))
-      return file.name.toLowerCase().includes(normalizedQuery) && (typeFilter === 'all' || kind === typeFilter) && matchesDevice
+      return file.name.toLowerCase().includes(normalizedQuery) && (typeFilters.length === 0 || typeFilters.includes(kind as FileKind)) && matchesDevice
     })
     return timeSort === 'newest' ? filtered : [...filtered].reverse()
-  }, [deviceFilter, files, query, timeSort, typeFilter])
+  }, [deviceFilter, files, query, timeSort, typeFilters])
   const detailFile = files.find(file => file.id === detailFileId)
   const selectedFiles = files.filter(file => selected.includes(file.id))
   const selectedDownloadable = selectedFiles.length > 0 && selectedFiles.every(isFileAvailable)
@@ -132,6 +140,13 @@ export default function FilesPage() {
 
   const showNotice = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(''), 2200) }
   const changeView = (next: 'grid' | 'list') => { setView(next); localStorage.setItem('file-view', next) }
+  const toggleTypeFilter = (value: FileKind) => {
+    setTypeFilters(current => {
+      const next = current.includes(value) ? current.filter(item => item !== value) : [...current, value]
+      localStorage.setItem('file-type-filters', JSON.stringify(next))
+      return next
+    })
+  }
   const toggleSelected = (id: string) => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
   const openFile = (file: FileItem) => {
     if (file.isFolder) { setPath(current => [...current, file.name]); setSelected([]); return }
@@ -195,13 +210,15 @@ export default function FilesPage() {
       </div>}
 
       <div className="app-surface mb-4 flex flex-wrap items-center gap-2 rounded-2xl border p-2.5">
-        <label className="relative min-w-[150px] flex-1 sm:flex-none">
-          <span className="sr-only">文件类型</span>
-          <select value={typeFilter} onChange={event => setTypeFilter(event.target.value as typeof typeFilter)} className="h-11 w-full appearance-none rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] pl-4 pr-10 text-sm font-medium outline-none transition-colors hover:border-primary-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15">
-            <option value="all">全部类型</option><option value="folder">文件夹</option><option value="image">图片</option><option value="document">文档</option><option value="video">视频</option><option value="audio">音频</option><option value="other">其他</option>
-          </select>
-          <ChevronDown size={16} className="app-muted pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
-        </label>
+        <details className="group relative min-w-[170px] flex-1 sm:flex-none">
+          <summary className="flex h-11 cursor-pointer list-none items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] px-4 text-sm font-medium outline-none transition-colors hover:border-primary-300 focus:ring-2 focus:ring-primary-500/15">
+            <span>{typeFilters.length === 0 ? '全部类型' : `已选 ${typeFilters.length} 类`}</span><ChevronDown size={16} className="app-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="app-surface absolute left-0 top-12 z-30 grid min-w-full grid-cols-2 gap-1 rounded-xl border p-2 shadow-xl sm:w-56">
+            {typeOptions.map(option => <label key={option.value} className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-sm hover:bg-[var(--surface-soft)]"><input type="checkbox" checked={typeFilters.includes(option.value)} onChange={() => toggleTypeFilter(option.value)} className="h-4 w-4 accent-primary-600" />{option.label}</label>)}
+            {typeFilters.length > 0 && <button type="button" onClick={() => { setTypeFilters([]); localStorage.removeItem('file-type-filters') }} className="col-span-2 min-h-9 rounded-lg text-sm font-medium text-primary-700 hover:bg-[var(--surface-soft)] dark:text-primary-300">清除筛选</button>}
+          </div>
+        </details>
         <label className="relative min-w-[170px] flex-1 sm:flex-none">
           <span className="sr-only">设备筛选</span>
           <select value={deviceFilter} onChange={event => { const value = event.target.value; setSearchParams(value === 'all' ? {} : { device: value }) }} className="h-11 w-full appearance-none rounded-xl border border-[var(--border)] bg-[var(--surface-soft)] pl-4 pr-10 text-sm font-medium outline-none transition-colors hover:border-primary-300 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/15">

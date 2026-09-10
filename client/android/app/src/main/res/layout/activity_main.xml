@@ -216,16 +216,20 @@
 
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    android:orientation="vertical">
 
-                    <Spinner android:id="@+id/filterSpinner" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="0.8" android:backgroundTint="@color/forest" android:spinnerMode="dropdown" />
-                    <Spinner android:id="@+id/sortSpinner" android:layout_width="0dp" android:layout_height="48dp" android:layout_marginStart="3dp" android:layout_weight="0.8" android:backgroundTint="@color/forest" android:spinnerMode="dropdown" />
-                    <Spinner android:id="@+id/deviceFilterSpinner" android:layout_width="0dp" android:layout_height="48dp" android:layout_marginStart="3dp" android:layout_weight="1" android:backgroundTint="@color/forest" android:spinnerMode="dropdown" />
-                    <ImageButton android:id="@+id/viewModeButton" style="@style/CompactToolbarIconButton" android:layout_marginStart="3dp" android:contentDescription="@string/list_view" android:src="@drawable/ic_grid" />
-                    <ImageButton android:id="@+id/uploadButton" style="@style/CompactToolbarIconButton" android:layout_marginStart="2dp" android:contentDescription="@string/add_files" android:src="@drawable/ic_add" android:tint="@color/forest" />
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical" android:orientation="horizontal">
+                        <Button android:id="@+id/filterSpinner" style="@style/FilterControl" android:layout_width="0dp" android:layout_weight="1" android:text="全部类型" />
+                        <Spinner android:id="@+id/sortSpinner" style="@style/FilterControl" android:layout_width="0dp" android:layout_marginStart="6dp" android:layout_weight="1" android:spinnerMode="dropdown" />
+                        <Spinner android:id="@+id/deviceFilterSpinner" style="@style/FilterControl" android:layout_width="0dp" android:layout_marginStart="6dp" android:layout_weight="1" android:spinnerMode="dropdown" />
+                    </LinearLayout>
+
+                    <LinearLayout android:layout_width="match_parent" android:layout_height="44dp" android:gravity="end|center_vertical" android:orientation="horizontal">
+                        <ImageButton android:id="@+id/viewModeButton" style="@style/CompactToolbarIconButton" android:contentDescription="@string/list_view" android:src="@drawable/ic_grid" />
+                        <ImageButton android:id="@+id/uploadButton" style="@style/CompactToolbarIconButton" android:layout_marginStart="4dp" android:contentDescription="@string/add_files" android:src="@drawable/ic_add" android:tint="@color/forest" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <HorizontalScrollView android:layout_width="match_parent" android:layout_height="1dp" android:visibility="gone">
@@ -280,10 +284,7 @@
             <LinearLayout android:id="@+id/trashSection" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
                 <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/panel" android:orientation="vertical" android:padding="6dp">
                     <Button android:id="@+id/profileConnectionButton" style="@style/ProfileRow" android:text="@string/connection_settings" />
-                    <Button android:id="@+id/profileStorageButton" style="@style/ProfileRow" android:text="@string/storage_preferences" />
-                    <Button android:id="@+id/profileTransferButton" style="@style/ProfileRow" android:text="@string/transfer_preferences" />
                     <Button android:id="@+id/profileAppearanceButton" style="@style/ProfileRow" android:text="@string/appearance" />
-                    <Button android:id="@+id/profileSecurityButton" style="@style/ProfileRow" android:text="@string/security" />
                     <Button android:id="@+id/profileAboutButton" style="@style/ProfileRow" android:text="@string/about" />
                 </LinearLayout>
                 <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="@string/share_management" />
