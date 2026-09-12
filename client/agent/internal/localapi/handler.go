@@ -14,8 +14,8 @@ import (
 
 	sharediskv1 "github.com/share-disk/share-disk/contracts/proto/sharedisk/v1"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/storage"
-	storagecatalog "github.com/share-disk/share-disk/client/ubuntu/internal/storage/catalog"
+	"github.com/share-disk/share-disk/client/agent/internal/storage"
+	storagecatalog "github.com/share-disk/share-disk/client/agent/internal/storage/catalog"
 )
 
 // LocalHandler implements the local IPC service by delegating to the agent's

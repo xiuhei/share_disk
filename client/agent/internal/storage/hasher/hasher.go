@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math"
+
+	objectmanifest "github.com/share-disk/share-disk/internal/manifest"
 )
 
 // Hasher computes SHA-256 hashes in a streaming fashion.
@@ -85,6 +88,9 @@ type ChunkHasher struct {
 	offset    int64
 	index     int
 }
+
+// ChunkSize returns the effective chunk size after applying the default.
+func (ch *ChunkHasher) ChunkSize() int64 { return ch.chunkSize }
 
 // ChunkInfo represents information about a chunk.
 type ChunkInfo struct {
@@ -199,8 +205,38 @@ func ComputeManifest(r io.Reader, chunkSize int64) (*Manifest, error) {
 	return &Manifest{
 		Hash:       overallHasher.Sum(),
 		Size:       chunker.TotalSize(),
-		ChunkSize:  chunkSize,
+		ChunkSize:  chunker.ChunkSize(),
 		ChunkCount: len(chunks),
 		Chunks:     chunks,
 	}, nil
+}
+
+// Canonical converts the storage hash result into the transport-independent
+// manifest used by HTTP, libp2p tickets and transfer completion.
+func (m *Manifest) Canonical() (*objectmanifest.Manifest, error) {
+	if m == nil || m.Size < 0 || m.ChunkSize <= 0 || m.ChunkSize > math.MaxUint32 {
+		return nil, fmt.Errorf("invalid storage manifest dimensions")
+	}
+	result := &objectmanifest.Manifest{
+		Version:    objectmanifest.Version1,
+		ObjectSize: uint64(m.Size),
+		ChunkSize:  uint32(m.ChunkSize),
+		ObjectHash: [sha256.Size]byte(m.Hash),
+		Chunks:     make([]objectmanifest.Chunk, len(m.Chunks)),
+	}
+	for i, chunk := range m.Chunks {
+		if chunk.Index < 0 || uint64(chunk.Index) > math.MaxUint32 || chunk.Offset < 0 || chunk.Size < 0 || chunk.Size > math.MaxUint32 {
+			return nil, fmt.Errorf("invalid storage chunk %d", i)
+		}
+		result.Chunks[i] = objectmanifest.Chunk{
+			Index:  uint32(chunk.Index),
+			Offset: uint64(chunk.Offset),
+			Size:   uint32(chunk.Size),
+			Hash:   [sha256.Size]byte(chunk.Hash),
+		}
+	}
+	if err := result.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid storage manifest: %w", err)
+	}
+	return result, nil
 }

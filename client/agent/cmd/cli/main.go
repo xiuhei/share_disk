@@ -8,7 +8,7 @@ import (
 
 	sharediskv1 "github.com/share-disk/share-disk/contracts/proto/sharedisk/v1"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/localapi"
+	"github.com/share-disk/share-disk/client/agent/internal/localapi"
 	"github.com/share-disk/share-disk/internal/version"
 )
 

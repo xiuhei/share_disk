@@ -23,6 +23,9 @@ message TransferOpen {
 
   // Requested chunk indices (empty means all chunks).
   repeated uint32 requested_chunks = 5;
+
+  // Canonical manifest SHA-256 approved by the target's transfer plan.
+  bytes manifest_digest = 6;
 }
 
 // TransferAccept is sent by the source device to accept a transfer request.

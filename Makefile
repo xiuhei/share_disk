@@ -6,6 +6,7 @@ GOCMD=go
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOVET=$(GOCMD) vet
+GOTEST=$(GOCMD) test
 GOFMT=gofmt
 GOIMPORTS=goimports
 
@@ -61,7 +62,7 @@ $(AGENT_BIN):
 
 $(CLI_BIN):
 	@mkdir -p $(@D)
-	$(GOBUILD) $(LDFLAGS) -o $@ ./client/ubuntu/cmd/cli
+	$(GOBUILD) $(LDFLAGS) -o $@ ./client/agent/cmd/cli
 
 # Clean build artifacts
 .PHONY: clean
@@ -102,8 +103,8 @@ deb:
 	CGO_ENABLED=0 GOOS=linux $(GOBUILD) -ldflags "-X github.com/share-disk/share-disk/internal/version.Version=$(DEB_VERSION) \
 	-X github.com/share-disk/share-disk/internal/version.Commit=$(COMMIT) \
 	-X github.com/share-disk/share-disk/internal/version.BuildTime=$(BUILD_TIME)" \
-	-o $(DEB_STAGING)/usr/bin/share-disk-cli ./client/ubuntu/cmd/cli
-	cp -r client/ubuntu/migrations/sqlite $(DEB_STAGING)/usr/lib/share-disk/migrations/sqlite
+	-o $(DEB_STAGING)/usr/bin/share-disk-cli ./client/agent/cmd/cli
+	cp -r client/agent/migrations/sqlite $(DEB_STAGING)/usr/lib/share-disk/migrations/sqlite
 	install -m 0644 client/ubuntu/packaging/deb/etc/share-disk/agent.env $(DEB_STAGING)/etc/share-disk/agent.env
 	install -m 0644 client/ubuntu/packaging/deb/usr/lib/systemd/system/share-disk-agent.service $(DEB_STAGING)/usr/lib/systemd/system/share-disk-agent.service
 	install -m 0644 client/ubuntu/packaging/deb/usr/share/doc/share-disk/copyright $(DEB_STAGING)/usr/share/doc/share-disk/copyright
@@ -186,6 +187,20 @@ staticcheck:
 .PHONY: lint
 lint: vet staticcheck
 
+# Run behavioral tests. A successful build with "[no test files]" is not a
+# substitute for this gate as packages gain production responsibilities.
+.PHONY: test
+test:
+	$(GOTEST) ./...
+
+.PHONY: web-check
+web-check:
+	cd client/web && npm ci && npm run build
+
+.PHONY: android-check
+android-check:
+	./client/android/gradlew -p client/android --no-daemon assembleDebug lintDebug
+
 # Verify generated protocol assets.
 .PHONY: contract
 contract:
@@ -209,8 +224,13 @@ architecture:
 	@if $(GOCMD) list -deps ./server/... | grep -q '^github.com/share-disk/share-disk/client/'; then \
 		echo "ERROR: server packages must not import client packages"; exit 1; \
 	fi
-	@if $(GOCMD) list -deps ./client/ubuntu/... | grep -q '^github.com/share-disk/share-disk/server/'; then \
-		echo "ERROR: Ubuntu client packages must not import server packages"; exit 1; \
+	@for product in agent ubuntu windows; do \
+		if $(GOCMD) list -deps ./client/$$product/... | grep -q '^github.com/share-disk/share-disk/server/'; then \
+			echo "ERROR: client/$$product packages must not import server packages"; exit 1; \
+		fi; \
+	done
+	@if $(GOCMD) list -deps ./client/agent/... | grep -Eq '^github.com/share-disk/share-disk/client/(ubuntu|windows)/'; then \
+		echo "ERROR: shared Agent packages must not import platform launchers"; exit 1; \
 	fi
 	@echo "Product dependency boundaries are clean"
 
@@ -234,7 +254,7 @@ generate:
 
 # Run production-source checks.
 .PHONY: check
-check: fmt-check lint contract architecture vuln build
+check: fmt-check lint test contract architecture vuln build
 	@echo "All checks passed!"
 
 # Show help
@@ -255,6 +275,9 @@ help:
 	@echo "  vet           Run go vet"
 	@echo "  staticcheck   Run staticcheck"
 	@echo "  lint          Run all linters"
+	@echo "  test          Run Go behavioral tests"
+	@echo "  web-check     Install locked Web dependencies and build"
+	@echo "  android-check Build and lint the Android debug app"
 	@echo "  contract      Verify generated protocol assets"
 	@echo "  architecture  Verify server/client dependency boundaries"
 	@echo "  vuln          Run vulnerability check"

@@ -20,8 +20,8 @@ import (
 	"github.com/tus/tusd/v2/pkg/filestore"
 	tusd "github.com/tus/tusd/v2/pkg/handler"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/storage"
-	storagecatalog "github.com/share-disk/share-disk/client/ubuntu/internal/storage/catalog"
+	"github.com/share-disk/share-disk/client/agent/internal/storage"
+	storagecatalog "github.com/share-disk/share-disk/client/agent/internal/storage/catalog"
 	"github.com/share-disk/share-disk/internal/auth"
 	"github.com/share-disk/share-disk/internal/version"
 )
@@ -67,6 +67,7 @@ func New(address, publicKeyPEM, incomingDir string, maxUploadSize int64, trashRe
 	mux.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, version.Get())
 	})
+	mux.HandleFunc("/v1/lan/browser-download", browserDownload(tokenManager, store))
 	mux.Handle("/v1/lan/files", authenticate(tokenManager, http.HandlerFunc(listFiles(store))))
 	mux.Handle("/v1/lan/files/", authenticate(tokenManager, http.HandlerFunc(fileRoute(store, trashRetention, replicaEndpoint != ""))))
 	mux.Handle("/v1/lan/trash", authenticate(tokenManager, http.HandlerFunc(listTrash(store))))

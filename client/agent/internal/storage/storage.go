@@ -8,8 +8,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/platform"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/storage/hasher"
+	"github.com/share-disk/share-disk/client/agent/internal/platform"
+	"github.com/share-disk/share-disk/client/agent/internal/storage/hasher"
 	"golang.org/x/text/unicode/norm"
 )
 

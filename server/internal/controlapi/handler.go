@@ -93,6 +93,10 @@ func newRouter(h *Handler, monitoring bool) *chi.Mux {
 		r.Get("/admin/", h.AdminConsole)
 	}
 	r.Get("/v1/public/shares/{token}", h.ResolveShare)
+	r.Post("/v1/browser/login", h.BrowserLogin)
+	r.With(h.requireAuth).Get("/v1/browser/session", h.BrowserSession)
+	r.With(h.requireAuth).Post("/v1/browser/logout", h.BrowserLogout)
+	r.With(h.requireAuth).Post("/v1/browser/files/{fileID}/download-ticket", h.BrowserDownloadTicket)
 
 	// Auth endpoints
 	r.Route("/v1/auth", func(r chi.Router) {
@@ -129,6 +133,7 @@ func newRouter(h *Handler, monitoring bool) *chi.Mux {
 	r.With(h.requireAuth).Post("/v1/devices/heartbeat", h.DeviceHeartbeat)
 	r.With(h.requireAuth).Get("/v1/devices", h.ListDevices)
 	r.With(h.requireAuth).Delete("/v1/devices/{deviceID}", h.DeregisterDevice)
+	r.With(h.requireAuth).Patch("/v1/devices/{deviceID}", h.RenameDevice)
 	r.With(h.requireAuth).Get("/v1/account", h.GetAccount)
 	r.With(h.requireAuth).Patch("/v1/account/password", h.ChangePassword)
 	r.Route("/v1/device-commands", func(r chi.Router) {
@@ -136,6 +141,8 @@ func newRouter(h *Handler, monitoring bool) *chi.Mux {
 		r.Post("/claim", h.ClaimDeviceCommand)
 		r.Post("/{commandID}/finish", h.FinishDeviceCommand)
 	})
+	r.With(h.requireAuth).Get("/v1/transfers", h.ListTransfers)
+	r.With(h.requireAuth).Post("/v1/transfers", h.CreateTransfer)
 	r.Route("/v1/transfers", func(r chi.Router) {
 		r.Use(h.requireAuth)
 		r.Get("/", h.ListTransfers)
@@ -265,35 +272,20 @@ func writeShareError(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func (h *Handler) ApplyCatalogActions(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		OperationID string   `json:"operation_id"`
-		FileIDs     []string `json:"file_ids"`
-		Action      string   `json:"action"`
-		Name        string   `json:"name"`
+	if h.catalogRepo == nil {
+		writeError(w, r, 503, "UNAVAILABLE", "Catalog is not configured")
+		return
 	}
-	if decodeJSON(w, r, &req) != nil || req.OperationID == "" || len(req.FileIDs) == 0 || len(req.FileIDs) > 500 || (req.Action == "rename" && len(req.FileIDs) != 1) {
-		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid file action request")
+	var req catalog.ActionsRequest
+	if decodeJSON(w, r, &req) != nil {
+		writeError(w, r, 400, "INVALID_REQUEST", "Invalid file action request")
 		return
 	}
 	claims, _ := ClaimsFromContext(r.Context())
-	files := make([]*catalog.UnifiedFile, 0, len(req.FileIDs))
-	for index, id := range req.FileIDs {
-		file, err := h.catalogRepo.GetUnifiedFile(r.Context(), claims.UserID, id)
-		if err != nil {
-			writeCatalogError(w, r, err)
-			return
-		}
-		report := catalog.LifecycleReport{OperationID: req.OperationID + ":" + strconv.Itoa(index), LocalFileID: file.LocalFileID, Action: req.Action, Name: req.Name}
-		updated, err := h.catalogRepo.ApplyLifecycleReport(r.Context(), claims.UserID, file.OriginDeviceID, report)
-		if err != nil {
-			writeCatalogError(w, r, err)
-			return
-		}
-		if err := h.catalogRepo.QueueOriginLifecycleCommand(r.Context(), claims.UserID, file.ID, report); err != nil {
-			writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to queue file action")
-			return
-		}
-		files = append(files, updated)
+	files, err := h.catalogRepo.ApplyActions(r.Context(), claims.UserID, req)
+	if err != nil {
+		writeCatalogError(w, r, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"files": files})
 }
@@ -337,15 +329,18 @@ func (h *Handler) FinishDeviceCommand(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Success bool   `json:"success"`
 		Error   string `json:"error"`
+		Attempt int    `json:"attempt"`
 	}
-	if err := decodeJSON(w, r, &req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil || req.Attempt < 1 || len(req.Error) > 500 {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid command result")
 		return
 	}
 	claims, _ := ClaimsFromContext(r.Context())
-	if err := h.catalogRepo.FinishDeviceCommand(r.Context(), claims.UserID, claims.DeviceID, chi.URLParam(r, "commandID"), req.Success, req.Error); err != nil {
+	if err := h.catalogRepo.FinishDeviceCommand(r.Context(), claims.UserID, claims.DeviceID, chi.URLParam(r, "commandID"), req.Attempt, req.Success, req.Error); err != nil {
 		if errors.Is(err, catalog.ErrCommandNotFound) {
 			writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Device command not found")
+		} else if errors.Is(err, catalog.ErrCommandLeaseConflict) {
+			writeError(w, r, http.StatusConflict, "LEASE_CONFLICT", "Device command lease expired or superseded")
 		} else {
 			writeError(w, r, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to finish device command")
 		}
@@ -675,15 +670,16 @@ func (h *Handler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) MoveCatalogFiles(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		FileIDs  []string `json:"file_ids"`
-		FolderID string   `json:"folder_id"`
+		FileIDs          []string         `json:"file_ids"`
+		FolderID         string           `json:"folder_id"`
+		ExpectedVersions map[string]int64 `json:"expected_versions,omitempty"`
 	}
 	if decodeJSON(w, r, &req) != nil {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "Invalid move request")
 		return
 	}
 	claims, _ := ClaimsFromContext(r.Context())
-	if err := h.catalogRepo.MoveFiles(r.Context(), claims.UserID, req.FolderID, req.FileIDs); err != nil {
+	if err := h.catalogRepo.MoveFiles(r.Context(), claims.UserID, req.FolderID, req.FileIDs, req.ExpectedVersions); err != nil {
 		writeFolderError(w, r, err)
 		return
 	}
@@ -692,6 +688,8 @@ func (h *Handler) MoveCatalogFiles(w http.ResponseWriter, r *http.Request) {
 
 func writeFolderError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, catalog.ErrVersionConflict):
+		writeError(w, r, http.StatusConflict, "VERSION_CONFLICT", "文件已被修改，请刷新后重试")
 	case errors.Is(err, catalog.ErrFolderNotFound), errors.Is(err, catalog.ErrFileNotFound):
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Folder or file not found")
 	case errors.Is(err, catalog.ErrFolderNotEmpty), errors.Is(err, catalog.ErrNameConflict):
@@ -724,6 +722,10 @@ func (h *Handler) ReportCatalogLifecycle(w http.ResponseWriter, r *http.Request)
 
 func writeCatalogError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, catalog.ErrVersionConflict):
+		writeError(w, r, http.StatusConflict, "VERSION_CONFLICT", "文件已被修改，请刷新后重试")
+	case errors.Is(err, catalog.ErrIdempotencyConflict):
+		writeError(w, r, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "操作编号已用于不同请求")
 	case errors.Is(err, catalog.ErrFileNotFound):
 		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "Catalog file not found")
 	case errors.Is(err, catalog.ErrNameConflict):
@@ -927,7 +929,13 @@ func (h *Handler) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r)
 		if !ok {
-			writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Missing or malformed Authorization header")
+			if r.Header.Get("Authorization") != "" {
+				writeError(w, r, http.StatusUnauthorized, "UNAUTHORIZED", "Malformed Authorization header")
+				return
+			}
+			if browserRequest, authenticated := h.authenticateBrowserRequest(w, r); authenticated {
+				next.ServeHTTP(w, browserRequest)
+			}
 			return
 		}
 

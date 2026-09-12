@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // Service handles authentication business logic
@@ -72,11 +75,12 @@ type RegisterDeviceRequest struct {
 // EnrollDeviceRequest authenticates an existing account while creating or
 // resuming this client's stable device identity.
 type EnrollDeviceRequest struct {
-	Account  string `json:"account"`
-	Password string `json:"password"`
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
-	PeerID   string `json:"peer_id"`
+	Account   string `json:"account"`
+	Password  string `json:"password"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
+	PublicKey []byte `json:"public_key,omitempty"`
+	PeerID    string `json:"peer_id"`
 }
 
 // AuthResponse represents an authentication response
@@ -155,6 +159,9 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentSessionID s
 		return ErrInvalidCredentials
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE sessions SET revoked_at=COALESCE(revoked_at,NOW()),updated_at=NOW() WHERE user_id=$1 AND id<>$2`, userID, currentSessionID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM browser_sessions WHERE user_id=$1 AND id<>$2`, userID, currentSessionID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -401,7 +408,7 @@ func (s *Service) EnrollDevice(ctx context.Context, req *EnrollDeviceRequest) (*
 	if !valid {
 		return nil, ErrInvalidCredentials
 	}
-	return s.RegisterDevice(ctx, user.ID, &RegisterDeviceRequest{Name: req.Name, Platform: req.Platform, PeerID: req.PeerID})
+	return s.RegisterDevice(ctx, user.ID, &RegisterDeviceRequest{Name: req.Name, Platform: req.Platform, PublicKey: req.PublicKey, PeerID: req.PeerID})
 }
 
 // RegisterDevice provisions a device-owned session without sharing the
@@ -426,6 +433,8 @@ func (s *Service) RegisterDevice(ctx context.Context, userID string, req *Regist
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate device key placeholder: %w", err)
 		}
+	} else if err := validatePeerPublicKey(peerID, publicKey); err != nil {
+		return nil, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -469,6 +478,21 @@ func (s *Service) RegisterDevice(ctx context.Context, userID string, req *Regist
 		return nil, fmt.Errorf("failed to commit device registration: %w", err)
 	}
 	return &AuthResponse{AccessToken: accessToken, RefreshToken: refreshToken, TokenType: "Bearer", ExpiresIn: s.tokenManager.AccessTokenTTL(), UserID: userID, DeviceID: device.ID}, nil
+}
+
+func validatePeerPublicKey(peerIDText string, encodedPublicKey []byte) error {
+	publicKey, err := libp2pcrypto.UnmarshalPublicKey(encodedPublicKey)
+	if err != nil {
+		return invalidInput("public_key is not a valid libp2p public key")
+	}
+	derived, err := peer.IDFromPublicKey(publicKey)
+	if err != nil {
+		return invalidInput("public_key cannot produce a peer id")
+	}
+	if derived.String() != peerIDText {
+		return invalidInput("public_key does not match peer_id")
+	}
+	return nil
 }
 
 // Refresh rotates a refresh token. A replayed (already used or revoked) token

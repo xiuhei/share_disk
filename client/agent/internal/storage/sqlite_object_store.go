@@ -200,6 +200,9 @@ func (s *SQLiteObjectStore) Import(ctx context.Context, sourcePath string) (*Obj
 	}
 	if existing != nil && existing.Status == ObjectStatusReady && existing.Size == staged.Size() {
 		if err := s.verifyPersistedObject(hash); err == nil {
+			if err := s.finalizeStaged(staged); err != nil {
+				return nil, err
+			}
 			return s.objectInfo(staged), nil
 		}
 	}
@@ -214,17 +217,26 @@ func (s *SQLiteObjectStore) Import(ctx context.Context, sourcePath string) (*Obj
 		return nil, err
 	}
 
-	if err := s.store.UpdateObjectStatus(hash, ObjectStatusReady); err != nil {
-		return nil, fmt.Errorf("failed to update object status: %w", err)
-	}
-	if err := s.store.UpdateObjectVerification(hash); err != nil {
-		return nil, fmt.Errorf("failed to update object verification: %w", err)
-	}
-	if err := s.store.SaveChunks(hash, staged.Chunks()); err != nil {
-		return nil, fmt.Errorf("failed to persist chunk manifest: %w", err)
+	if err := s.finalizeStaged(staged); err != nil {
+		return nil, err
 	}
 
 	return s.objectInfo(staged), nil
+}
+
+func (s *SQLiteObjectStore) finalizeStaged(staged *StagedImport) error {
+	manifest, err := staged.Manifest()
+	if err != nil {
+		return fmt.Errorf("failed to create canonical manifest: %w", err)
+	}
+	digest, err := manifest.Digest()
+	if err != nil {
+		return fmt.Errorf("failed to digest canonical manifest: %w", err)
+	}
+	if err := s.store.FinalizeObject(staged.Hash(), staged.Chunks(), digest); err != nil {
+		return fmt.Errorf("failed to persist canonical manifest: %w", err)
+	}
+	return nil
 }
 
 func (s *SQLiteObjectStore) objectInfo(staged *StagedImport) *ObjectInfo {

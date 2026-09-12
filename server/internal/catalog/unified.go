@@ -178,6 +178,19 @@ func (r *Repository) ListUnifiedFiles(ctx context.Context, userID string, trash 
 // Agent. The origin-device predicate prevents one device from reporting state
 // for another device's local file.
 func (r *Repository) ApplyLifecycleReport(ctx context.Context, userID, deviceID string, report LifecycleReport) (*UnifiedFile, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	file, err := applyLifecycleReportTx(ctx, tx, userID, deviceID, report, false)
+	if err != nil {
+		return nil, err
+	}
+	return file, tx.Commit()
+}
+
+func applyLifecycleReportTx(ctx context.Context, tx *sql.Tx, userID, deviceID string, report LifecycleReport, fromControl bool) (*UnifiedFile, error) {
 	if report.LocalFileID == "" || report.OperationID == "" || len(report.OperationID) > 128 {
 		return nil, fmt.Errorf("%w: operation_id and local_file_id are required", ErrInvalidRequest)
 	}
@@ -187,11 +200,6 @@ func (r *Repository) ApplyLifecycleReport(ctx context.Context, userID, deviceID 
 	}
 	requestHash := sha256.Sum256(requestJSON)
 	idempotencyKey := deviceID + ":" + report.OperationID
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, userID); err != nil {
 		return nil, err
 	}
@@ -206,7 +214,7 @@ func (r *Repository) ApplyLifecycleReport(ctx context.Context, userID, deviceID 
 		if err := json.Unmarshal(storedBody, &stored); err != nil {
 			return nil, err
 		}
-		return &stored, tx.Commit()
+		return &stored, nil
 	}
 	if err != sql.ErrNoRows {
 		return nil, err
@@ -285,8 +293,10 @@ func (r *Repository) ApplyLifecycleReport(ctx context.Context, userID, deviceID 
 		if _, err = tx.ExecContext(ctx, `UPDATE trash_records SET status='purged', updated_at=NOW() WHERE file_entry_id=$1`, file.ID); err != nil {
 			return nil, err
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE replicas SET state='deleted', version=version+1, updated_at=NOW() WHERE user_id=$1 AND device_id=$2 AND object_id=(SELECT object_id FROM file_entries WHERE id=$3)`, userID, deviceID, file.ID); err != nil {
-			return nil, err
+		if !fromControl {
+			if _, err = tx.ExecContext(ctx, `UPDATE replicas SET state='deleted', version=version+1, updated_at=NOW() WHERE user_id=$1 AND device_id=$2 AND object_id=(SELECT object_id FROM file_entries WHERE id=$3)`, userID, deviceID, file.ID); err != nil {
+				return nil, err
+			}
 		}
 		changed = true
 	default:
@@ -294,6 +304,11 @@ func (r *Repository) ApplyLifecycleReport(ctx context.Context, userID, deviceID 
 	}
 
 	if changed {
+		if fromControl {
+			if err := queueOriginLifecycleCommandTx(ctx, tx, userID, file.ID, report); err != nil {
+				return nil, err
+			}
+		}
 		if err := enqueueLifecycleCommands(ctx, tx, userID, deviceID, file.ID, report); err != nil {
 			return nil, err
 		}
@@ -310,9 +325,6 @@ func (r *Repository) ApplyLifecycleReport(ctx context.Context, userID, deviceID 
 		return nil, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE idempotency_keys SET status='completed',response_code=200,response_body=$1::jsonb,updated_at=NOW() WHERE user_id=$2 AND key=$3`, string(responseJSON), userID, idempotencyKey); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return file, nil

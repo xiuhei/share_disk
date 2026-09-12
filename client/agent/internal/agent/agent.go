@@ -9,18 +9,22 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
+	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/agentsync"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/desktopui"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/discovery"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/lanapi"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/localapi"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/storage"
+	"github.com/share-disk/share-disk/client/agent/internal/agentsync"
+	"github.com/share-disk/share-disk/client/agent/internal/desktopui"
+	"github.com/share-disk/share-disk/client/agent/internal/discovery"
+	"github.com/share-disk/share-disk/client/agent/internal/lanapi"
+	"github.com/share-disk/share-disk/client/agent/internal/localapi"
+	"github.com/share-disk/share-disk/client/agent/internal/storage"
 	"github.com/share-disk/share-disk/internal/config"
 	"github.com/share-disk/share-disk/internal/database"
+	"github.com/share-disk/share-disk/internal/p2p"
 	"github.com/share-disk/share-disk/internal/version"
 )
 
@@ -55,32 +59,55 @@ func New(cfg *config.Config, sqliteMigrationsDir string) (*Agent, error) {
 	}
 
 	if err := database.NewMigrator(db, sqliteMigrationsDir, "sqlite").MigrateUp(); err != nil {
-		db.Close()
+		_ = db.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to migrate sqlite: %w", err)
 	}
 
 	st, err := storage.New(cfg.Agent.StorageRoot)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to create storage: %w", err)
 	}
 
 	store := storage.NewSQLiteObjectStore(st, db, cfg.Agent.ChunkSize)
 	if err := store.Init(context.Background()); err != nil {
-		db.Close()
+		_ = db.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to initialize object store: %w", err)
 	}
 
 	deviceID, err := ensureDeviceID(context.Background(), db)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to load device id: %w", err)
+	}
+	peerPrivateKey, err := p2p.LoadOrCreateIdentity(filepath.Join(cfg.Agent.StorageRoot, "identity", "libp2p.key"))
+	if err != nil {
+		_ = db.Close()
+		_ = lockFile.Close()
+		return nil, fmt.Errorf("failed to load peer identity: %w", err)
+	}
+	peerID, err := peer.IDFromPrivateKey(peerPrivateKey)
+	if err != nil {
+		_ = db.Close()
+		_ = lockFile.Close()
+		return nil, fmt.Errorf("failed to derive peer id: %w", err)
+	}
+	publicKey, err := libp2pcrypto.MarshalPublicKey(peerPrivateKey.GetPublic())
+	if err != nil {
+		_ = db.Close()
+		_ = lockFile.Close()
+		return nil, fmt.Errorf("failed to encode peer public key: %w", err)
 	}
 
 	handler := localapi.NewLocalHandler(store, st, deviceID, versionString(), db, cfg.Agent.LANAdvertiseURL, cfg.Agent.TrashRetention)
 	server := localapi.NewServer(cfg.Agent.SocketPath, handler)
 	if err := server.Listen(); err != nil {
-		db.Close()
+		_ = db.Close()
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to start IPC server: %w", err)
 	}
 
@@ -129,11 +156,13 @@ func New(cfg *config.Config, sqliteMigrationsDir string) (*Agent, error) {
 		if hostnameErr != nil || deviceName == "" {
 			deviceName = "share-disk-agent"
 		}
-		coordinator = agentsync.New(db, cfg.Agent.ControlURL, cfg.Agent.LANAdvertiseURL, deviceID, deviceName, cfg.Agent.SyncInterval, cfg.Agent.HeartbeatInterval)
+		coordinator = agentsync.New(db, cfg.Agent.ControlURL, cfg.Agent.LANAdvertiseURL, peerID.String(), publicKey, deviceName, cfg.Agent.SyncInterval, cfg.Agent.HeartbeatInterval)
 		coordinator.SetTransferStore(store, st.IncomingDir())
 		handler.SetCoordinator(coordinator)
 		if err := coordinator.Recover(context.Background()); err != nil {
-			_ = lanServer.Close()
+			if lanServer != nil {
+				_ = lanServer.Close()
+			}
 			if desktopServer != nil {
 				_ = desktopServer.Close()
 			}
@@ -151,7 +180,9 @@ func New(cfg *config.Config, sqliteMigrationsDir string) (*Agent, error) {
 	if cfg.Agent.LANDiscoveryEnabled {
 		advertiser, err = discovery.Start(deviceID, cfg.Agent.LANPort, versionString())
 		if err != nil {
-			_ = lanServer.Close()
+			if lanServer != nil {
+				_ = lanServer.Close()
+			}
 			if desktopServer != nil {
 				_ = desktopServer.Close()
 			}

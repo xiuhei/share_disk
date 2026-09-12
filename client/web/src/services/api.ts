@@ -1,176 +1,71 @@
-import { File, Device, Transfer, Share, User } from './types'
-
-const API_BASE = '/api'
-
-class ApiClient {
-  private token: string | null = null
-
-  setToken(token: string | null) {
-    this.token = token
-  }
-
-  private async request<T>(path: string, options?: RequestInit): Promise<T> {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    }
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`
-    }
-
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        ...headers,
-        ...options?.headers,
-      },
-    })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: '请求失败' }))
-      throw new Error(error.message || '请求失败')
-    }
-
-    return response.json()
-  }
-
-  // Auth
-  async login(username: string, password: string): Promise<{ token: string; user: User }> {
-    return this.request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    })
-  }
-
-  async bootstrap(token: string, username: string, password: string): Promise<{ token: string; user: User }> {
-    return this.request('/auth/bootstrap', {
-      method: 'POST',
-      body: JSON.stringify({ token, username, password }),
-    })
-  }
-
-  // Files
-  async listFiles(parentId?: string): Promise<File[]> {
-    const params = parentId ? `?parentId=${parentId}` : ''
-    return this.request(`/catalog/files${params}`)
-  }
-
-  async getFile(id: string): Promise<File> {
-    return this.request(`/catalog/files/${id}`)
-  }
-
-  async replicateFile(fileId: string, targetDeviceId: string): Promise<Transfer> {
-    return this.request('/transfers/', {
-      method: 'POST',
-      body: JSON.stringify({ file_id: fileId, target_device_id: targetDeviceId }),
-    })
-  }
-
-  async createFolder(name: string, parentId?: string): Promise<File> {
-    return this.request('/catalog/folders', {
-      method: 'POST',
-      body: JSON.stringify({ name, parentId }),
-    })
-  }
-
-  async renameFile(id: string, name: string): Promise<void> {
-    await this.request(`/catalog/files/${id}/rename`, {
-      method: 'PUT',
-      body: JSON.stringify({ name }),
-    })
-  }
-
-  async moveFile(id: string, parentId: string): Promise<void> {
-    await this.request(`/catalog/files/${id}/move`, {
-      method: 'PUT',
-      body: JSON.stringify({ parentId }),
-    })
-  }
-
-  async deleteFile(id: string): Promise<void> {
-    await this.request(`/catalog/files/${id}`, {
-      method: 'DELETE',
-    })
-  }
-
-  async trashFile(id: string): Promise<void> {
-    await this.request(`/catalog/files/${id}/trash`, {
-      method: 'PUT',
-    })
-  }
-
-  async restoreFile(id: string): Promise<void> {
-    await this.request(`/catalog/trash/${id}/restore`, {
-      method: 'PUT',
-    })
-  }
-
-  // Transfers
-  async listTransfers(): Promise<Transfer[]> {
-    return this.request('/transfers')
-  }
-
-  async cancelTransfer(id: string): Promise<void> {
-    await this.request(`/transfers/${id}`, {
-      method: 'DELETE',
-    })
-  }
-
-  // Devices
-  async listDevices(): Promise<Device[]> {
-    return this.request('/devices')
-  }
-
-  async removeDevice(id: string): Promise<void> {
-    await this.request(`/devices/${id}`, {
-      method: 'DELETE',
-    })
-  }
-
-  // Shares
-  async listShares(): Promise<Share[]> {
-    return this.request('/shares')
-  }
-
-  async createShare(fileId: string, expiresIn?: number, password?: string): Promise<Share> {
-    return this.request('/shares', {
-      method: 'POST',
-      body: JSON.stringify({ fileId, expiresIn, password }),
-    })
-  }
-
-  async deleteShare(id: string): Promise<void> {
-    await this.request(`/shares/${id}`, {
-      method: 'DELETE',
-    })
-  }
-
-  // Upload (tus)
-  async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<string> {
-    // TODO: Implement tus upload
-    void file
-    return new Promise((resolve) => {
-      let progress = 0
-      const interval = setInterval(() => {
-        progress += 10
-        onProgress?.(progress)
-        if (progress >= 100) {
-          clearInterval(interval)
-          resolve('file-id')
-        }
-      }, 100)
-    })
-  }
-
-  // Download
-  async downloadFile(id: string, name: string): Promise<Blob> {
-    void name
-    const response = await fetch(`${API_BASE}/catalog/files/${id}/download`, {
-      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
-    })
-    if (!response.ok) throw new Error('下载失败')
-    return response.blob()
-  }
+export interface Account { id: string; account: string; created_at: string }
+export interface BrowserSession { account: Account; csrf_token: string; expires_at: string }
+export interface Replica { device_id: string; device_name: string; platform: string; state: string; online: boolean; is_origin: boolean }
+export interface FileEntry {
+  id: string; folder_id: string; name: string; size: number; mime: string; sha256: string;
+  status: string; version: number; available: boolean; replicas: Replica[];
+  origin_device_id: string; origin_device_name: string; created_at: string; updated_at: string;
+  deleted_at?: string; purge_after?: string
 }
-
-export const api = new ApiClient()
+export interface FolderEntry { id: string; parent_id?: string; name: string; updated_at: string; version: number }
+export interface DeviceEntry { id: string; name: string; platform: string; status: string; last_seen_at?: string }
+export interface TransferEntry { id: string; object_id: string; target_device_id: string; state: string; attempt: number; version: number; created_at: string }
+export interface ShareEntry { id: string; file_id: string; file_name: string; token?: string; status: string; expires_at: string; created_at: string; download_count: number }
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, message: string) { super(message) }
+}
+export class ControlClient {
+  private csrfToken = ''
+  async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const headers = new Headers(options.headers)
+    if (options.body) headers.set('Content-Type', 'application/json')
+    if (options.method && options.method !== 'GET') headers.set('X-CSRF-Token', this.csrfToken)
+    const response = await fetch(`/v1${path}`, { ...options, headers, credentials: 'same-origin', redirect: 'error' })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      if (response.status === 401 && path !== '/browser/login' && path !== '/browser/session') window.dispatchEvent(new Event('share-disk-session-expired'))
+      throw new ApiError(response.status, body?.error?.code || 'HTTP_ERROR', body?.error?.message || `请求失败 (${response.status})`)
+    }
+    if (response.status === 204) return undefined as T
+    return response.json() as Promise<T>
+  }
+  async session() {
+    const session = await this.request<BrowserSession>('/browser/session')
+    this.csrfToken = session.csrf_token
+    return session
+  }
+  async login(account: string, password: string, remember = false) {
+    const session = await this.request<BrowserSession>('/browser/login', { method: 'POST', body: JSON.stringify({ account, password, remember }) })
+    this.csrfToken = session.csrf_token
+    return session
+  }
+  async logout() { await this.request<void>('/browser/logout', { method: 'POST' }); this.csrfToken = '' }
+  changePassword(current_password: string, new_password: string) { return this.request('/account/password', { method: 'PATCH', body: JSON.stringify({ current_password, new_password }) }) }
+  async listFiles(folderId?: string, query = '', sort = 'newest') {
+    const params = new URLSearchParams({ q: query, sort })
+    if (folderId) params.set('folder_id', folderId)
+    return (await this.request<{ files: FileEntry[] }>(`/catalog/files?${params}`)).files || []
+  }
+  getFile(id: string) { return this.request<FileEntry>(`/catalog/files/${encodeURIComponent(id)}`) }
+  downloadTicket(id: string) { return this.request<{ url: string; ticket: string; expires_in: number }>(`/browser/files/${encodeURIComponent(id)}/download-ticket`, { method: 'POST' }) }
+  async listFolders() { return (await this.request<{ folders: FolderEntry[] }>('/catalog/folders')).folders || [] }
+  createFolder(name: string, parent_id?: string) { return this.request<FolderEntry>('/catalog/folders', { method: 'POST', body: JSON.stringify({ name, parent_id }) }) }
+  renameFolder(id: string, name: string) { return this.request(`/catalog/folders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }) }
+  deleteFolder(id: string) { return this.request<void>(`/catalog/folders/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+  fileAction(file_ids: string[], action: 'rename' | 'trash' | 'restore' | 'purge', name?: string, expected_versions?: Record<string, number>) {
+    return this.request('/catalog/files/actions', { method: 'POST', body: JSON.stringify({ file_ids, action, name, expected_versions, operation_id: crypto.randomUUID() }) })
+  }
+  moveFiles(file_ids: string[], folder_id: string, expected_versions?: Record<string, number>) { return this.request<void>('/catalog/files/move', { method: 'POST', body: JSON.stringify({ file_ids, folder_id, expected_versions }) }) }
+  async listTrash() { return (await this.request<{ files: FileEntry[] }>('/catalog/trash')).files || [] }
+  async listDevices() { return (await this.request<{ devices: DeviceEntry[] }>('/devices')).devices || [] }
+  removeDevice(id: string) { return this.request<void>(`/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+  renameDevice(id: string, name: string) { return this.request<void>(`/devices/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }) }
+  async listTransfers() { return (await this.request<{ transfers: TransferEntry[] }>('/transfers')).transfers || [] }
+  replicateFile(file_id: string, target_device_id: string) { return this.request<TransferEntry>('/transfers', { method: 'POST', body: JSON.stringify({ file_id, target_device_id }) }) }
+  cancelTransfer(id: string) { return this.request<void>(`/transfers/${encodeURIComponent(id)}/cancel`, { method: 'POST' }) }
+  async listShares() { return (await this.request<{ shares: ShareEntry[] }>('/shares')).shares || [] }
+  createShare(file_id: string, expires_in_seconds: number) { return this.request<ShareEntry>('/shares', { method: 'POST', body: JSON.stringify({ file_id, expires_in_seconds }) }) }
+  deleteShare(id: string) { return this.request<void>(`/shares/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+}
+export const api = new ControlClient()
 export default api

@@ -1,214 +1,37 @@
 import { useState } from 'react'
-import { 
-  Share2, 
-  Link, 
-  Copy, 
-  Trash2, 
-  Clock, 
-  Shield,
-  Plus,
-  Check
-} from 'lucide-react'
-import { formatDate } from '../../utils/helpers'
+import { Share2, Copy, Plus, Trash2, X } from 'lucide-react'
+import api, { ShareEntry } from '../../services/api'
+import { useAction, useResource } from '../../hooks/useResource'
+import ResourceState from '../../components/ResourceState'
 import ConfirmDialog from '../../components/ConfirmDialog'
 
-interface ShareLink {
-  id: string
-  fileName: string
-  url: string
-  createdAt: string
-  expiresAt: string
-  downloads: number
-  password?: string
-}
-
-const mockShares: ShareLink[] = [
-  { 
-    id: '1', 
-    fileName: '项目报告.pdf', 
-    url: 'https://share.example.com/s/abc123',
-    createdAt: '2024-01-15',
-    expiresAt: '2024-01-16',
-    downloads: 5,
-    password: '1234'
-  },
-  { 
-    id: '2', 
-    fileName: '设计稿.png', 
-    url: 'https://share.example.com/s/def456',
-    createdAt: '2024-01-14',
-    expiresAt: '2024-01-15',
-    downloads: 12
-  },
-  { 
-    id: '3', 
-    fileName: '演示视频.mp4', 
-    url: 'https://share.example.com/s/ghi789',
-    createdAt: '2024-01-13',
-    expiresAt: '2024-01-14',
-    downloads: 3
-  },
-]
-
 export default function SharesPage() {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [shares, setShares] = useState(mockShares)
-  const [pendingRevoke, setPendingRevoke] = useState<ShareLink | null>(null)
-
-  const handleCopy = async (url: string, id: string) => {
-    await navigator.clipboard.writeText(url)
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
+  const resource = useResource(['shares'], () => api.listShares())
+  const files = useResource(['share-files'], () => api.listFiles())
+  const action = useAction()
+  const [creating, setCreating] = useState(false)
+  const [fileId, setFileId] = useState('')
+  const [expiry, setExpiry] = useState(86400)
+  const [createdUrl, setCreatedUrl] = useState('')
+  const [pending, setPending] = useState<ShareEntry | null>(null)
+  const [message, setMessage] = useState('')
+  const create = () => {
+    if (!fileId || action.isPending) return
+    action.mutate(() => api.createShare(fileId, expiry), { onSuccess: result => {
+      const share = result as ShareEntry
+      setCreatedUrl(`${window.location.origin}/s/${share.token}`)
+      setCreating(false)
+    } })
   }
-
-  return (
-    <div className="page-shell">
-      {/* Page Header */}
-      <div className="mb-6 flex items-center justify-end">
-        <button 
-          className="btn btn-primary"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <Plus size={18} />
-          <span className="hidden sm:inline">创建链接</span>
-        </button>
-      </div>
-
-      {/* Share List */}
-      <div className="flex-1 overflow-auto space-y-3">
-        {shares.map(share => (
-          <div
-            key={share.id}
-            className="card hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
-          >
-            <div className="flex items-start gap-4">
-              {/* Icon */}
-              <div className="w-12 h-12 rounded-xl bg-primary-100 dark:bg-primary-900/20 flex items-center justify-center flex-shrink-0">
-                <Share2 size={20} className="text-primary-500" />
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                  {share.fileName}
-                </h3>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  <span className="flex items-center gap-1">
-                    <Clock size={14} />
-                    创建于 {formatDate(share.createdAt)}
-                  </span>
-                  <span>过期于 {share.expiresAt}</span>
-                  <span>{share.downloads} 次下载</span>
-                  {share.password && (
-                    <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                      <Shield size={14} />
-                      有密码
-                    </span>
-                  )}
-                </div>
-
-                {/* URL */}
-                <div className="flex items-center gap-2 mt-3">
-                  <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm text-gray-600 dark:text-gray-300 font-mono truncate">
-                    <Link size={14} className="flex-shrink-0" />
-                    <span className="truncate">{share.url}</span>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(share.url, share.id)}
-                    className={`p-2 rounded-lg transition-colors ${
-                      copiedId === share.id
-                        ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 hover:text-primary-500'
-                    }`}
-                  >
-                    {copiedId === share.id ? <Check size={16} /> : <Copy size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1">
-                <button onClick={() => setPendingRevoke(share)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" aria-label={`取消 ${share.fileName} 的分享`} title="取消分享">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {shares.length === 0 && (
-          <div className="text-center py-12">
-            <Share2 size={48} className="mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-            <p className="text-gray-500 dark:text-gray-400">暂无分享链接</p>
-          </div>
-        )}
-      </div>
-
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4">
-          <div className="modal-panel app-surface w-full max-w-md rounded-2xl border shadow-xl">
-            <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                创建分享链接
-              </h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    选择文件
-                  </label>
-                  <select className="input">
-                    <option>项目报告.pdf</option>
-                    <option>设计稿.png</option>
-                    <option>演示视频.mp4</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    有效期
-                  </label>
-                  <select className="input">
-                    <option>24 小时</option>
-                    <option>7 天</option>
-                    <option>30 天</option>
-                    <option>永久有效</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    访问密码（可选）
-                  </label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="留空则无需密码"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="btn btn-secondary"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="btn btn-primary"
-              >
-                创建链接
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <ConfirmDialog open={pendingRevoke !== null} title={`取消“${pendingRevoke?.fileName || ''}”的分享？`} confirmLabel="取消分享" destructive onCancel={() => setPendingRevoke(null)} onConfirm={() => { if (pendingRevoke) setShares(current => current.filter(share => share.id !== pendingRevoke.id)); setPendingRevoke(null) }} />
+  return <div className="page-shell">
+    <ResourceState loading={resource.isPending} error={action.error || resource.error || files.error} retry={() => { action.reset(); void resource.refetch(); void files.refetch() }} />
+    <div className="mb-6 flex justify-end"><button className="btn btn-primary" onClick={() => setCreating(true)}><Plus size={18} />创建链接</button></div>
+    {createdUrl && <div className="card mb-4"><p className="mb-2 font-semibold">分享已创建，请保存链接</p><p className="app-muted mb-2 text-sm">出于安全原因，链接密钥只在创建时显示。</p><input className="input" readOnly value={createdUrl} aria-label="新分享链接" /><button className="btn btn-secondary mt-3" onClick={() => navigator.clipboard.writeText(createdUrl).then(() => setMessage('链接已复制')).catch(() => setMessage('请手动选择并复制链接'))}><Copy size={16} />复制链接</button></div>}
+    {message && <p role="status" className="mb-3">{message}</p>}
+    <div className="min-h-0 flex-1 space-y-3 overflow-auto">{(resource.data || []).map(share => <article key={share.id} className="card flex items-start gap-4"><Share2 className="text-primary-600" size={24} /><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{share.file_name}</h2><p className="app-muted mt-2 text-sm">有效期至 {new Date(share.expires_at).toLocaleString()}</p><p className="app-muted text-sm">已签发下载授权 {share.download_count} 次 · {share.status === 'active' && Date.parse(share.expires_at) > Date.now() ? '有效' : '已失效'}</p></div>{share.status === 'active' && <button className="icon-button text-red-600" onClick={() => setPending(share)} aria-label={`取消 ${share.file_name} 的分享`}><Trash2 size={18} /></button>}</article>)}
+      {!resource.isPending && !resource.error && !resource.data?.length && <p className="app-muted py-12 text-center">暂无分享链接</p>}
     </div>
-  )
+    {creating && <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center"><div role="dialog" aria-modal="true" aria-labelledby="share-title" className="modal-panel app-surface w-full max-w-md rounded-2xl border p-5"><div className="mb-4 flex items-center justify-between"><h2 id="share-title" className="text-lg font-semibold">创建分享链接</h2><button className="icon-button" onClick={() => setCreating(false)} aria-label="关闭"><X size={18} /></button></div><label className="block">选择文件<select className="input mb-4 mt-2" value={fileId} onChange={event => setFileId(event.target.value)}><option value="">请选择有在线副本的文件</option>{(files.data || []).filter(file => file.available).map(file => <option key={file.id} value={file.id}>{file.name}</option>)}</select></label><label className="block">有效期<select className="input mt-2" value={expiry} onChange={event => setExpiry(Number(event.target.value))}><option value={86400}>24 小时</option><option value={604800}>7 天</option><option value={2592000}>30 天</option></select></label><p className="app-muted mt-3 text-sm">接收者需要能够连接到文件所在设备。</p><ResourceState error={action.error} /><div className="mt-5 flex justify-end gap-2"><button className="btn btn-secondary" onClick={() => setCreating(false)}>取消</button><button className="btn btn-primary" disabled={!fileId || action.isPending} onClick={create}>{action.isPending ? '创建中…' : '创建链接'}</button></div></div></div>}
+    <ConfirmDialog open={!!pending} title={`取消“${pending?.file_name || ''}”的分享？`} description="将停止签发新下载授权，已签发授权将在到期后失效。" destructive onCancel={() => setPending(null)} onConfirm={() => { if (pending && !action.isPending) action.mutate(() => api.deleteShare(pending.id), { onSuccess: () => setPending(null) }) }} />
+  </div>
 }

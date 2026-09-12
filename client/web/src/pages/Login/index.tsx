@@ -8,16 +8,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [remember, setRemember] = useState(false)
   const [error, setError] = useState('')
   const { login } = useAuth()
   const navigate = useNavigate()
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setError('')
-    if (!username.trim() || password.length < 4) { setError('请输入用户名和至少 4 位密码'); return }
+    if (!username.trim() || !password) { setError('请输入用户名和密码'); return }
     setLoading(true)
-    try { await login(username.trim(), password); navigate('/files') }
-    catch { setError('暂时无法登录，请稍后重试') }
+    try { await login(username.trim(), password, remember); navigate('/files') }
+    catch (cause) { setError((cause as Error).message) }
     finally { setLoading(false) }
   }
 
@@ -46,7 +47,7 @@ export default function LoginPage() {
             <label className="block text-sm font-medium">用户名<input autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} className="input mt-2" placeholder="请输入用户名" /></label>
             <label className="block text-sm font-medium">密码<span className="relative mt-2 block"><input autoComplete="current-password" type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} className="input pr-12" placeholder="请输入密码" /><button type="button" onClick={() => setShowPassword(v => !v)} className="icon-button absolute right-1 top-1/2 -translate-y-1/2" aria-label={showPassword ? '隐藏密码' : '显示密码'}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></span></label>
             {error && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
-            <div className="flex items-center justify-between text-sm"><label className="app-muted flex items-center gap-2"><input type="checkbox" className="h-4 w-4 accent-primary-600" />保持登录</label><button type="button" className="font-medium text-primary-700 hover:underline dark:text-primary-300">忘记密码？</button></div>
+            <div className="flex items-center justify-between text-sm"><label className="app-muted flex items-center gap-2"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} className="h-4 w-4 accent-primary-600" />保持登录</label><button type="button" onClick={() => setError('请联系此服务的管理员恢复账户访问。')} className="font-medium text-primary-700 hover:underline dark:text-primary-300">忘记密码？</button></div>
             <button disabled={loading} className="btn btn-primary w-full">{loading ? <Loader2 size={18} className="animate-spin" /> : <>登录 <ArrowRight size={18} /></>}</button>
           </form>
           <p className="app-muted mt-8 text-center text-xs">Share Disk 仅在你的私有网络中工作</p>

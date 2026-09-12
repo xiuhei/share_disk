@@ -7,6 +7,10 @@ import {
 } from 'lucide-react'
 import { formatFileSize, getFileType } from '../../utils/helpers'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import ResourceState from '../../components/ResourceState'
+import api from '../../services/api'
+import { submitDownload } from '../../services/agentData'
+import { useResource, useAction } from '../../hooks/useResource'
 
 type DeviceKind = 'desktop' | 'mobile' | 'server'
 interface StorageDevice { id: string; name: string; kind: DeviceKind; online: boolean; ip: string }
@@ -19,36 +23,11 @@ interface FileItem {
   isFolder: boolean
   originDeviceId?: string
   replicaDeviceIds?: string[]
+  available?: boolean
+  version: number
 }
-
-const storageDevices: StorageDevice[] = [
-  { id: 'ubuntu', name: 'Ubuntu 工作站', kind: 'desktop', online: true, ip: '192.168.1.100' },
-  { id: 'android', name: '我的手机', kind: 'mobile', online: true, ip: '192.168.1.101' },
-  { id: 'nas', name: '客厅 NAS', kind: 'server', online: true, ip: '192.168.1.106' },
-  { id: 'work', name: '办公室电脑', kind: 'desktop', online: true, ip: '203.0.113.18' },
-  { id: 'macbook', name: 'MacBook Pro', kind: 'desktop', online: false, ip: '192.168.1.108' },
-]
-
-const initialFiles: FileItem[] = [
-  { id: '1', name: '团队资料', size: 0, type: '', modified: '今天 09:42', isFolder: true },
-  { id: '2', name: '产品设计', size: 0, type: '', modified: '昨天 18:20', isFolder: true },
-  { id: '3', name: '照片备份', size: 0, type: '', modified: '9 月 4 日', isFolder: true },
-  { id: '4', name: '季度复盘.pdf', size: 2548000, type: 'application/pdf', modified: '今天 08:15', isFolder: false, originDeviceId: 'ubuntu', replicaDeviceIds: ['ubuntu', 'android', 'work'] },
-  { id: '5', name: '需求清单.docx', size: 156000, type: 'application/docx', modified: '昨天 16:34', isFolder: false, originDeviceId: 'android', replicaDeviceIds: ['android', 'nas'] },
-  { id: '6', name: '首页方案.png', size: 3200000, type: 'image/png', modified: '9 月 4 日', isFolder: false, originDeviceId: 'macbook', replicaDeviceIds: ['macbook'] },
-  { id: '7', name: '发布演示.mp4', size: 156000000, type: 'video/mp4', modified: '9 月 3 日', isFolder: false, originDeviceId: 'macbook', replicaDeviceIds: ['macbook', 'ubuntu'] },
-  { id: '8', name: '访谈录音.mp3', size: 8500000, type: 'audio/mp3', modified: '9 月 2 日', isFolder: false, originDeviceId: 'android', replicaDeviceIds: ['android'] },
-]
 
 const deviceIcons = { desktop: Laptop, mobile: Smartphone, server: Server }
-
-function replicasFor(file: FileItem) {
-  return storageDevices.filter(device => file.replicaDeviceIds?.includes(device.id))
-}
-
-function isFileAvailable(file: FileItem) {
-  return file.isFolder || replicasFor(file).some(device => device.online)
-}
 
 function fileTypeLabel(type: string) {
   return ({ image: '图片', video: '视频', audio: '音频', document: '文档', other: '其他' } as const)[getFileType(type)]
@@ -71,9 +50,8 @@ function FileMark({ file, large = false }: { file: FileItem; large?: boolean }) 
 
 export default function FilesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [files, setFiles] = useState(initialFiles)
   const [view, setView] = useState<'grid' | 'list'>(() => (localStorage.getItem('file-view') as 'grid' | 'list') || 'grid')
-  const [path, setPath] = useState<string[]>([])
+  const [path, setPath] = useState<{ id: string; name: string }[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [query, setQuery] = useState('')
   type FileKind = 'folder' | 'image' | 'document' | 'video' | 'audio' | 'other'
@@ -88,6 +66,8 @@ export default function FilesPage() {
   const [timeSort, setTimeSort] = useState<'newest' | 'oldest'>('newest')
   const deviceFilter = searchParams.get('device') || 'all'
   const [folderDialog, setFolderDialog] = useState(false)
+  const [editor, setEditor] = useState<{ kind: 'rename' | 'move'; file: FileItem } | null>(null)
+  const [editValue, setEditValue] = useState('')
   const [folderName, setFolderName] = useState('')
   const [notice, setNotice] = useState('')
   const [detailFileId, setDetailFileId] = useState<string | null>(null)
@@ -95,6 +75,23 @@ export default function FilesPage() {
   const [contextMenu, setContextMenu] = useState<{ fileId: string; x: number; y: number } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const foldersQuery = useResource(['folders'], () => api.listFolders())
+  const devicesQuery = useResource(['devices'], () => api.listDevices(), 15000)
+  const folders = foldersQuery.data || []
+  const parentId = path[path.length - 1]?.id || folders.find(folder => !folder.parent_id)?.id
+  const filesQuery = useResource(['files', parentId, query, timeSort], () => api.listFiles(parentId, query, timeSort), 15000)
+  const action = useAction()
+  const storageDevices: StorageDevice[] = (devicesQuery.data || []).map(device => ({
+    id: device.id, name: device.name, kind: device.platform === 'android' ? 'mobile' : device.platform === 'server' ? 'server' : 'desktop',
+    online: device.status === 'active' && !!device.last_seen_at && Date.now() - Date.parse(device.last_seen_at) < 120000, ip: device.platform,
+  }))
+  const files: FileItem[] = [
+    ...folders.filter(folder => folder.parent_id === parentId).map(folder => ({ id: folder.id, name: folder.name, size: 0, type: '', modified: new Date(folder.updated_at).toLocaleString(), isFolder: true, version: folder.version })),
+    ...(filesQuery.data || []).map(file => ({ id: file.id, name: file.name, size: file.size, type: file.mime, modified: new Date(file.updated_at).toLocaleString(), isFolder: false, originDeviceId: file.origin_device_id, replicaDeviceIds: (file.replicas || []).filter(replica => replica.state === 'ready').map(replica => replica.device_id), available: file.available, version: file.version })),
+  ]
+  const replicasFor = (file: FileItem) => storageDevices.filter(device => file.replicaDeviceIds?.includes(device.id))
+  const isFileAvailable = (file: FileItem) => file.isFolder || file.available === true
+
 
   const visibleFiles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -103,11 +100,11 @@ export default function FilesPage() {
       const matchesDevice = deviceFilter === 'all' || (!file.isFolder && file.replicaDeviceIds?.includes(deviceFilter))
       return file.name.toLowerCase().includes(normalizedQuery) && (typeFilters.length === 0 || typeFilters.includes(kind as FileKind)) && matchesDevice
     })
-    return timeSort === 'newest' ? filtered : [...filtered].reverse()
+    return filtered
   }, [deviceFilter, files, query, timeSort, typeFilters])
   const detailFile = files.find(file => file.id === detailFileId)
   const selectedFiles = files.filter(file => selected.includes(file.id))
-  const selectedDownloadable = selectedFiles.length > 0 && selectedFiles.every(isFileAvailable)
+  const selectedDownloadable = selectedFiles.length > 0 && selectedFiles.every(file => !file.isFolder && isFileAvailable(file))
   const detailReplicas = detailFile ? replicasFor(detailFile) : []
   const availableReplicaCount = detailReplicas.filter(device => device.online).length
   const targetDevices = detailFile ? storageDevices.filter(device => !detailFile.replicaDeviceIds?.includes(device.id)) : []
@@ -149,53 +146,58 @@ export default function FilesPage() {
   }
   const toggleSelected = (id: string) => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
   const openFile = (file: FileItem) => {
-    if (file.isFolder) { setPath(current => [...current, file.name]); setSelected([]); return }
+    if (file.isFolder) { setPath(current => [...current, { id: file.id, name: file.name }]); setSelected([]); return }
     if (window.matchMedia('(max-width: 640px)').matches) { setDetailFileId(file.id); return }
     if (isFileAvailable(file)) toggleSelected(file.id)
   }
   const openContextMenu = (event: React.MouseEvent, file: FileItem) => {
-    if (file.isFolder) return
     event.preventDefault()
     setContextMenu({ fileId: file.id, x: Math.min(event.clientX, window.innerWidth - 196), y: Math.min(event.clientY, window.innerHeight - 168) })
   }
   const downloadFile = (file: FileItem) => {
-    if (!isFileAvailable(file)) return
-    showNotice(`正在从在线设备获取“${file.name}”`)
+    if (!isFileAvailable(file) || file.isFolder) return
+    action.mutate(async () => { const result = await api.downloadTicket(file.id); submitDownload(result.url, result.ticket) })
   }
   const sendToDevice = () => {
-    if (!detailFile || !targetDeviceId || !isFileAvailable(detailFile)) return
-    const target = storageDevices.find(device => device.id === targetDeviceId)
-    if (!target?.online) return
-    setFiles(current => current.map(file => file.id === detailFile.id ? { ...file, replicaDeviceIds: [...(file.replicaDeviceIds || []), target.id] } : file))
-    setTargetDeviceId('')
-    showNotice(`已通知“${target.name}”下载该文件`)
+    if (!detailFile || !targetDeviceId || !isFileAvailable(detailFile) || action.isPending) return
+    action.mutate(() => api.replicateFile(detailFile.id, targetDeviceId), { onSuccess: () => { setTargetDeviceId(''); showNotice('副本任务已创建，完成状态请查看传输任务。') } })
   }
   const deleteSelectedFiles = () => {
-    setFiles(items => items.filter(item => !selected.includes(item.id)))
-    setSelected([])
-    setConfirmDelete(false)
-    showNotice('已移至回收站')
+    if (action.isPending) return
+    action.mutate(async () => {
+      const files = selectedFiles.filter(file => !file.isFolder)
+      if (files.length) await api.fileAction(files.map(file => file.id), 'trash', undefined, Object.fromEntries(files.map(file => [file.id, file.version])))
+      for (const folder of selectedFiles.filter(file => file.isFolder)) await api.deleteFolder(folder.id)
+    }, { onSuccess: () => { setSelected([]); setConfirmDelete(false); showNotice('所选文件已移入回收站，空文件夹已删除') } })
   }
   const createFolder = () => {
     const name = folderName.trim()
-    if (!name) return
-    setFiles(current => [{ id: crypto.randomUUID(), name, size: 0, type: '', modified: '刚刚', isFolder: true }, ...current])
-    setFolderName(''); setFolderDialog(false); showNotice(`已创建“${name}”`)
+    if (!name || action.isPending) return
+    action.mutate(() => api.createFolder(name, parentId), { onSuccess: () => { setFolderName(''); setFolderDialog(false); showNotice('文件夹已创建') } })
   }
-  const importFiles = (list: FileList | null) => {
-    if (!list?.length) return
-    const currentDeviceId = window.matchMedia('(max-width: 1024px)').matches ? 'android' : 'ubuntu'
-    const additions = Array.from(list).map(item => ({ id: crypto.randomUUID(), name: item.name, size: item.size, type: item.type, modified: '刚刚', isFolder: false, originDeviceId: currentDeviceId, replicaDeviceIds: [currentDeviceId] }))
-    setFiles(current => [...additions, ...current]); showNotice(`已添加 ${additions.length} 个文件`)
+  const startEdit = (kind: 'rename' | 'move', file: FileItem) => {
+    action.reset(); setContextMenu(null); setDetailFileId(null)
+    setEditor({ kind, file }); setEditValue(kind === 'rename' ? file.name : parentId || '')
   }
+  const saveEdit = () => {
+    if (!editor || !editValue.trim() || action.isPending) return
+    action.mutate(async () => {
+      if (editor.kind === 'move') await api.moveFiles([editor.file.id], editValue, { [editor.file.id]: editor.file.version })
+      else if (editor.file.isFolder) await api.renameFolder(editor.file.id, editValue.trim())
+      else await api.fileAction([editor.file.id], 'rename', editValue.trim(), { [editor.file.id]: editor.file.version })
+    }, { onSuccess: () => { setEditor(null); setSelected([]); showNotice('更改已保存') } })
+  }
+  const importFiles = (_list: FileList | null) => showNotice('浏览器上传尚未启用，请通过原生客户端上传。')
 
   return (
     <div className="page-shell">
+      <ResourceState loading={filesQuery.isPending || foldersQuery.isPending} error={action.error || filesQuery.error || foldersQuery.error || devicesQuery.error} retry={() => { action.reset(); void filesQuery.refetch(); void foldersQuery.refetch(); void devicesQuery.refetch() }} />
+      <input aria-label="搜索文件" className="input mb-3" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索文件名称" />
       <div className="mb-5 flex min-h-11 flex-wrap items-center justify-between gap-4">
         <div className="lg:hidden"><h1 className="page-title">全部文件</h1></div>
         <div className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto whitespace-nowrap text-sm lg:flex">
           {path.length > 0 && <button onClick={() => setPath([])} className="icon-button h-11 w-11 shrink-0" aria-label="返回文件根目录" title="根目录"><FolderOpen size={18} /></button>}
-          {path.map((folder, index) => <span key={`${folder}-${index}`} className="flex items-center gap-1"><ChevronRight size={15} className={`app-muted ${index === 0 ? 'hidden' : ''}`} /><button onClick={() => setPath(current => current.slice(0, index + 1))} className={`h-11 rounded-xl px-3 font-medium ${index === path.length - 1 ? 'bg-[var(--surface-soft)]' : 'app-muted hover:bg-[var(--surface-soft)] hover:text-primary-600'}`}>{folder}</button></span>)}
+          {path.map((folder, index) => <span key={`${folder.id}-${index}`} className="flex items-center gap-1"><ChevronRight size={15} className={`app-muted ${index === 0 ? 'hidden' : ''}`} /><button onClick={() => setPath(current => current.slice(0, index + 1))} className={`h-11 rounded-xl px-3 font-medium ${index === path.length - 1 ? 'bg-[var(--surface-soft)]' : 'app-muted hover:bg-[var(--surface-soft)] hover:text-primary-600'}`}>{folder.name}</button></span>)}
         </div>
         <div className="flex gap-2">
           <button className="btn btn-secondary px-3 sm:px-4" onClick={() => setFolderDialog(true)}><FolderPlus size={18} /><span className="hidden sm:inline">新建文件夹</span></button>
@@ -206,7 +208,7 @@ export default function FilesPage() {
 
       {path.length > 0 && <div className="mb-4 flex min-h-10 items-center gap-1 overflow-x-auto whitespace-nowrap text-sm lg:hidden">
         <button onClick={() => setPath([])} className="app-muted rounded-lg px-2 py-1.5 font-medium hover:bg-[var(--surface)] hover:text-primary-600">我的空间</button>
-        {path.map((folder, index) => <span key={`${folder}-${index}`} className="flex items-center gap-1"><ChevronRight size={15} className="app-muted" /><button onClick={() => setPath(current => current.slice(0, index + 1))} className={`rounded-lg px-2 py-1.5 font-medium ${index === path.length - 1 ? '' : 'app-muted hover:text-primary-600'}`}>{folder}</button></span>)}
+        {path.map((folder, index) => <span key={`${folder.id}-${index}`} className="flex items-center gap-1"><ChevronRight size={15} className="app-muted" /><button onClick={() => setPath(current => current.slice(0, index + 1))} className={`rounded-lg px-2 py-1.5 font-medium ${index === path.length - 1 ? '' : 'app-muted hover:text-primary-600'}`}>{folder.name}</button></span>)}
       </div>}
 
       <div className="app-surface mb-4 flex flex-wrap items-center gap-2 rounded-2xl border p-2.5">
@@ -243,7 +245,7 @@ export default function FilesPage() {
         <div className="mb-4 flex min-h-12 flex-wrap items-center gap-1 rounded-xl bg-primary-50 px-3 text-sm text-primary-800 dark:bg-primary-900/40 dark:text-primary-200 sm:fixed sm:bottom-6 sm:left-1/2 sm:z-40 sm:mb-0 sm:-translate-x-1/2 sm:border sm:border-primary-200 sm:bg-[var(--surface)] sm:px-4 sm:shadow-xl dark:sm:border-primary-800 dark:sm:bg-[var(--surface)]">
           <span className="mr-2 font-semibold">已选择 {selected.length} 项</span>
           <button disabled={!selectedDownloadable} onClick={() => selectedFiles.forEach(downloadFile)} className="btn btn-ghost min-h-9 px-2 text-primary-700 dark:text-primary-200" title={selectedDownloadable ? '下载所选文件' : '所选文件当前没有在线副本'}><Download size={16} />下载</button>
-          <button className="btn btn-ghost min-h-9 px-2 text-primary-700 dark:text-primary-200"><Share2 size={16} />分享</button>
+          <button disabled={action.isPending || selectedFiles.some(file => file.isFolder || !file.available)} onClick={() => action.mutate(async () => { const links = []; for (const file of selectedFiles) { const share = await api.createShare(file.id, 86400); links.push(`${window.location.origin}/s/${share.token}`) }; setNotice(links.join("\n")) })} className="btn btn-ghost min-h-9 px-2 text-primary-700 dark:text-primary-200"><Share2 size={16} />分享</button>
           <button className="btn btn-ghost min-h-9 px-2 text-red-600" onClick={() => setConfirmDelete(true)}><Trash2 size={16} />删除</button>
           <button className="icon-button ml-auto h-9 w-9" onClick={() => setSelected([])} aria-label="取消选择"><X size={17} /></button>
         </div>
@@ -258,8 +260,8 @@ export default function FilesPage() {
               const active = selected.includes(file.id)
               const available = isFileAvailable(file)
               return <article key={file.id} onContextMenu={event => openContextMenu(event, file)} onDoubleClick={() => file.isFolder && openFile(file)} className={`card group relative cursor-default p-3 transition-all ${available ? 'hover:-translate-y-0.5 hover:shadow-md' : 'opacity-55 grayscale'} ${active ? 'border-primary-500 ring-2 ring-primary-500/15' : ''}`}>
-                {available && <button onClick={() => toggleSelected(file.id)} className={`absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-lg border transition-opacity ${active ? 'border-primary-600 bg-primary-600 text-white' : 'border-[var(--border)] bg-[var(--surface)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}`} aria-label={`选择 ${file.name}`}>{active && <Check size={14} />}</button>}
-                {!file.isFolder && <button onClick={() => setDetailFileId(file.id)} className="icon-button absolute left-2 top-2 z-10 h-8 w-8 bg-[var(--surface)] opacity-100 shadow-sm sm:opacity-0 sm:group-hover:opacity-100" aria-label={`查看 ${file.name} 属性`}><MoreHorizontal size={17} /></button>}
+                {<button onClick={() => toggleSelected(file.id)} className={`absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-lg border transition-opacity ${active ? 'border-primary-600 bg-primary-600 text-white' : 'border-[var(--border)] bg-[var(--surface)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}`} aria-label={`选择 ${file.name}`}>{active && <Check size={14} />}</button>}
+                {<button onClick={() => file.isFolder ? startEdit('rename', file) : setDetailFileId(file.id)} className="icon-button absolute left-2 top-2 z-10 h-8 w-8 bg-[var(--surface)] opacity-100 shadow-sm sm:opacity-0 sm:group-hover:opacity-100" aria-label={`查看 ${file.name} 属性`}><MoreHorizontal size={17} /></button>}
                 <button onClick={() => openFile(file)} aria-disabled={!available} className={`flex w-full flex-col items-start rounded-xl text-left ${!available ? 'cursor-not-allowed' : ''}`}><div className="mb-5 flex h-24 w-full items-center justify-center rounded-xl bg-[var(--surface-soft)]"><FileMark file={file} large /></div><span className="flex w-full min-w-0 items-center gap-2"><span className="min-w-0 flex-1 truncate text-sm font-semibold">{file.name}</span>{!file.isFolder && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${available ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>{available ? `${replicasFor(file).filter(device => device.online).length} 台在线` : '不可用'}</span>}</span><span className="app-muted mt-1 text-xs">{file.isFolder ? file.modified : `${formatFileSize(file.size)} · ${file.modified}`}</span></button>
               </article>
             })}
@@ -271,7 +273,7 @@ export default function FilesPage() {
               const available = isFileAvailable(file)
               return <div key={file.id} onContextMenu={event => openContextMenu(event, file)} className={`grid grid-cols-[minmax(0,1fr)_44px] items-center gap-2 border-b border-[var(--border)] px-3 py-2.5 last:border-0 sm:grid-cols-[minmax(240px,1fr)_120px_150px_44px] ${available ? 'hover:bg-[var(--surface-soft)]' : 'bg-gray-50 opacity-55 grayscale dark:bg-gray-900/20'} ${selected.includes(file.id) ? 'bg-primary-50 dark:bg-primary-900/30' : ''}`}>
                 <button onClick={() => openFile(file)} aria-disabled={!available} className={`flex min-w-0 items-center gap-3 text-left ${!available ? 'cursor-not-allowed' : ''}`}><FileMark file={file} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{file.name}</span>{!file.isFolder && <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium sm:hidden ${available ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}`}>{available ? '在线' : '不可用'}</span>}</button>
-                <span className="app-muted hidden text-sm sm:block">{file.isFolder ? '—' : formatFileSize(file.size)}</span><span className="app-muted hidden text-sm sm:block">{file.modified}</span>{file.isFolder ? <span /> : <button onClick={() => setDetailFileId(file.id)} className="icon-button" aria-label={`查看 ${file.name} 属性`}><MoreHorizontal size={18} /></button>}
+                <span className="app-muted hidden text-sm sm:block">{file.isFolder ? '—' : formatFileSize(file.size)}</span><span className="app-muted hidden text-sm sm:block">{file.modified}</span>{<button onClick={() => file.isFolder ? startEdit('rename', file) : setDetailFileId(file.id)} className="icon-button" aria-label={`查看 ${file.name} 属性`}><MoreHorizontal size={18} /></button>}
               </div>
             })}
           </div>
@@ -283,10 +285,12 @@ export default function FilesPage() {
         if (!file) return null
         const available = isFileAvailable(file)
         return <div role="menu" className="app-surface fixed z-50 w-48 rounded-xl border p-1.5 shadow-xl" style={{ left: contextMenu.x, top: contextMenu.y }} onClick={event => event.stopPropagation()}>
-          <button role="menuitem" disabled={!available} onClick={() => { downloadFile(file); setContextMenu(null) }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium hover:bg-[var(--surface-soft)] disabled:cursor-not-allowed disabled:opacity-40"><Download size={17} />下载</button>
+          <button role="menuitem" disabled={file.isFolder || !available} onClick={() => { downloadFile(file); setContextMenu(null) }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium hover:bg-[var(--surface-soft)] disabled:cursor-not-allowed disabled:opacity-40"><Download size={17} />下载</button>
           <button role="menuitem" onClick={() => { setDetailFileId(file.id); setContextMenu(null) }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium hover:bg-[var(--surface-soft)]"><Info size={17} />属性</button>
+          <button role="menuitem" onClick={() => startEdit('rename', file)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-sm hover:bg-[var(--surface-soft)]">重命名</button>
+          {!file.isFolder && <button role="menuitem" onClick={() => startEdit('move', file)} className="flex min-h-10 w-full items-center rounded-lg px-3 text-sm hover:bg-[var(--surface-soft)]">移动到…</button>}
           <div className="my-1 border-t border-[var(--border)]" />
-          <button role="menuitem" disabled={!available} onClick={() => { setSelected([file.id]); setConfirmDelete(true); setContextMenu(null) }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"><Trash2 size={17} />删除</button>
+          <button role="menuitem" onClick={() => { setSelected([file.id]); setConfirmDelete(true); setContextMenu(null) }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"><Trash2 size={17} />删除</button>
         </div>
       })()}
 
@@ -307,6 +311,7 @@ export default function FilesPage() {
                 <p className="text-sm font-semibold">{available ? `${availableReplicaCount} 台设备在线` : '文件当前不可用'}</p>
               </div>
 
+              <div className="mb-5 flex flex-wrap gap-2"><button className="btn btn-secondary" onClick={() => startEdit('rename', detailFile)}>重命名</button><button className="btn btn-secondary" onClick={() => startEdit('move', detailFile)}>移动到…</button><button className="btn btn-danger" onClick={() => { setSelected([detailFile.id]); setDetailFileId(null); setConfirmDelete(true) }}>删除</button></div>
               <section className="mb-7">
                 <h3 className="mb-3 text-sm font-semibold">文件信息</h3>
                 <dl className="grid grid-cols-[88px_1fr] gap-y-2.5 text-sm"><dt className="app-muted">修改时间</dt><dd>{detailFile.modified}</dd><dt className="app-muted">上传来源</dt><dd className="flex items-center gap-2">{origin?.name || '未知设备'}{origin && <span className={`h-2 w-2 rounded-full ${origin.online ? 'bg-primary-500' : 'bg-gray-400'}`} aria-label={origin.online ? '在线' : '离线'} />}</dd></dl>
@@ -341,8 +346,9 @@ export default function FilesPage() {
         </div>
       })()}
 
+      {editor && <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center"><form role="dialog" aria-modal="true" aria-labelledby="edit-title" onSubmit={event => { event.preventDefault(); saveEdit() }} className="modal-panel app-surface w-full max-w-md rounded-2xl border p-5"><h2 id="edit-title" className="mb-4 text-lg font-semibold">{editor.kind === 'rename' ? '重命名' : '移动文件'}：{editor.file.name}</h2><ResourceState error={action.error} />{editor.kind === 'rename' ? <label className="block text-sm">新名称<input autoFocus className="input mt-2" value={editValue} onChange={event => setEditValue(event.target.value)} /></label> : <label className="block text-sm">目标文件夹<select className="input mt-2" value={editValue} onChange={event => setEditValue(event.target.value)}>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.parent_id ? folder.name : '我的空间（根目录）'}</option>)}</select></label>}<div className="mt-5 flex justify-end gap-2"><button type="button" className="btn btn-secondary" onClick={() => setEditor(null)}>取消</button><button className="btn btn-primary" disabled={!editValue.trim() || action.isPending}>{action.isPending ? '保存中…' : '保存'}</button></div></form></div>}
       {folderDialog && <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center" onMouseDown={() => setFolderDialog(false)}><div role="dialog" aria-modal="true" aria-labelledby="folder-title" onMouseDown={e => e.stopPropagation()} className="modal-panel app-surface w-full max-w-md rounded-2xl border p-5 shadow-2xl"><div className="mb-5 flex items-center justify-between"><div><h2 id="folder-title" className="text-lg font-semibold">新建文件夹</h2><p className="app-muted mt-1 text-sm">文件夹将创建在当前位置</p></div><button className="icon-button" onClick={() => setFolderDialog(false)} aria-label="关闭"><X size={19} /></button></div><label className="mb-5 block text-sm font-medium">文件夹名称<input autoFocus value={folderName} onChange={e => setFolderName(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolder()} className="input mt-2" placeholder="例如：项目资料" /></label><div className="flex justify-end gap-2"><button className="btn btn-secondary" onClick={() => setFolderDialog(false)}>取消</button><button className="btn btn-primary" disabled={!folderName.trim()} onClick={createFolder}>创建</button></div></div></div>}
-      <ConfirmDialog open={confirmDelete} title={`删除 ${selected.length} 个项目？`} confirmLabel="移至回收站" destructive onCancel={() => setConfirmDelete(false)} onConfirm={deleteSelectedFiles} />
+      <ConfirmDialog open={confirmDelete} title={`删除 ${selected.length} 个项目？`} description="文件可从回收站恢复；空文件夹将直接删除，非空文件夹不会删除。" confirmLabel="移至回收站" destructive onCancel={() => setConfirmDelete(false)} onConfirm={deleteSelectedFiles} />
       {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-xl sm:bottom-6"><Check size={17} className="text-primary-300" />{notice}</div>}
     </div>
   )

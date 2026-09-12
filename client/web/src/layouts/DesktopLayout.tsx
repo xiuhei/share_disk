@@ -1,4 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '../contexts/AuthContext'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   ArrowUpDown, FolderOpen, HardDrive, Monitor, RefreshCw,
@@ -10,7 +12,7 @@ const navGroups = [
     label: '工作区',
     items: [
       { path: '/files', icon: FolderOpen, label: '全部文件' },
-      { path: '/transfers', icon: ArrowUpDown, label: '传输任务', badge: '2' },
+      { path: '/transfers', icon: ArrowUpDown, label: '传输任务' },
       { path: '/shares', icon: Share2, label: '我的分享' },
     ],
   },
@@ -31,6 +33,8 @@ const titles: Record<string, string> = {
 
 export default function DesktopLayout({ children }: { children: ReactNode }) {
   const location = useLocation()
+  const cache = useQueryClient()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -53,15 +57,12 @@ export default function DesktopLayout({ children }: { children: ReactNode }) {
     publishSearch('')
   }
 
-  const refresh = () => {
+  const refresh = async () => {
     if (refreshState === 'refreshing') return
-    if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current)
     setRefreshState('refreshing')
-    window.dispatchEvent(new Event('share-disk-refresh'))
-    refreshTimer.current = window.setTimeout(() => {
-      setRefreshState('done')
-      refreshTimer.current = window.setTimeout(() => setRefreshState('idle'), 1400)
-    }, 650)
+    await cache.invalidateQueries({ queryKey: [user?.id] })
+    setRefreshState('done')
+    refreshTimer.current = window.setTimeout(() => setRefreshState('idle'), 1400)
   }
 
   useEffect(() => {
@@ -102,7 +103,7 @@ export default function DesktopLayout({ children }: { children: ReactNode }) {
             <div key={group.label}>
               <div className="app-muted mb-2 px-3 text-xs font-medium uppercase tracking-[.12em]">{group.label}</div>
               <div className="space-y-1">
-                {group.items.map(({ path, icon: Icon, label, badge }) => (
+                {group.items.map(({ path, icon: Icon, label }) => (
                   <NavLink key={path} to={path} className={({ isActive }) =>
                     `flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors ${
                       isActive ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-300' : 'app-muted hover:bg-black/[.035] hover:text-gray-900 dark:hover:bg-white/[.05] dark:hover:text-white'
@@ -110,7 +111,7 @@ export default function DesktopLayout({ children }: { children: ReactNode }) {
                   }>
                     <Icon size={19} strokeWidth={1.8} />
                     <span className="flex-1">{label}</span>
-                    {badge && <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs text-primary-700 dark:bg-primary-900 dark:text-primary-300">{badge}</span>}
+
                   </NavLink>
                 ))}
               </div>
@@ -118,13 +119,7 @@ export default function DesktopLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        <div className="rounded-2xl bg-[var(--surface-soft)] p-3.5">
-          <div className="mb-2 flex items-center justify-between text-xs">
-            <span className="font-medium">存储空间</span><span className="app-muted">35%</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-black/10 dark:bg-white/10"><div className="h-full w-[35%] rounded-full bg-primary-600" /></div>
-          <div className="app-muted mt-2 text-xs">3.5 GB / 10 GB</div>
-        </div>
+        <div className="rounded-2xl bg-[var(--surface-soft)] p-3.5"><p className="text-sm font-medium">{user?.username}</p><p className="app-muted mt-1 text-xs">文件保存在你的存储设备中</p></div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

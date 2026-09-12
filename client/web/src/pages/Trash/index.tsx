@@ -10,6 +10,9 @@ import {
 } from 'lucide-react'
 import { formatFileSize, getFileType } from '../../utils/helpers'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import ResourceState from '../../components/ResourceState'
+import api from '../../services/api'
+import { useResource, useAction } from '../../hooks/useResource'
 
 interface TrashItem {
   id: string
@@ -19,13 +22,6 @@ interface TrashItem {
   deletedAt: string
   expiresAt: string
 }
-
-const mockTrash: TrashItem[] = [
-  { id: '1', name: '旧版本报告.pdf', size: 1500000, type: 'application/pdf', deletedAt: '2024-01-10', expiresAt: '2024-02-10' },
-  { id: '2', name: '测试图片.jpg', size: 2500000, type: 'image/jpeg', deletedAt: '2024-01-08', expiresAt: '2024-02-08' },
-  { id: '3', name: '备份数据.zip', size: 45000000, type: 'application/zip', deletedAt: '2024-01-05', expiresAt: '2024-02-05' },
-  { id: '4', name: '草稿文档.docx', size: 85000, type: 'application/docx', deletedAt: '2024-01-03', expiresAt: '2024-02-03' },
-]
 
 function FileIcon({ type }: { type: string }) {
   const fileType = getFileType(type)
@@ -40,17 +36,20 @@ function FileIcon({ type }: { type: string }) {
 }
 
 export default function TrashPage() {
-  const [items, setItems] = useState(mockTrash)
+  const resource = useResource(['trash'], () => api.listTrash())
+  const action = useAction()
+  const items: TrashItem[] = (resource.data || []).map(file => ({ id: file.id, name: file.name, size: file.size, type: file.mime, deletedAt: file.deleted_at ? new Date(file.deleted_at).toLocaleString() : '—', expiresAt: file.purge_after ? new Date(file.purge_after).toLocaleString() : '未安排清理' }))
   const [pendingDelete, setPendingDelete] = useState<TrashItem | 'all' | null>(null)
 
   const confirmDelete = () => {
-    if (pendingDelete === 'all') setItems([])
-    else if (pendingDelete) setItems(current => current.filter(item => item.id !== pendingDelete.id))
-    setPendingDelete(null)
+    if (!pendingDelete || action.isPending) return
+    const ids = pendingDelete === 'all' ? items.map(item => item.id) : [pendingDelete.id]
+    action.mutate(() => api.fileAction(ids, 'purge'), { onSuccess: () => setPendingDelete(null) })
   }
 
   return (
     <div className="page-shell">
+      <ResourceState loading={resource.isPending} error={action.error || resource.error} retry={() => { void resource.refetch() }} />
       {/* Page Header */}
       <div className="mb-6 flex items-center justify-end">
         <button disabled={items.length === 0} onClick={() => setPendingDelete('all')} className="btn btn-danger">
@@ -96,7 +95,7 @@ export default function TrashPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setItems(current => current.filter(entry => entry.id !== item.id))} className="p-2 text-gray-400 hover:text-green-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="恢复" aria-label={`恢复 ${item.name}`}>
+                        <button onClick={() => action.mutate(() => api.fileAction([item.id], 'restore'))} className="p-2 text-gray-400 hover:text-green-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="恢复" aria-label={`恢复 ${item.name}`}>
                           <RotateCcw size={16} />
                         </button>
                         <button onClick={() => setPendingDelete(item)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="永久删除" aria-label={`永久删除 ${item.name}`}>

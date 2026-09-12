@@ -1,12 +1,12 @@
 // Package app exposes the cross-platform Agent lifecycle to desktop launchers.
 // Product-specific launchers own paths, native integration and packaging while
-// the storage and transfer implementation remains shared with the Ubuntu Agent.
+// storage and transfer implementation remains shared across desktop products.
 package app
 
 import (
 	"context"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/agent"
+	"github.com/share-disk/share-disk/client/agent/internal/agent"
 	"github.com/share-disk/share-disk/internal/config"
 )
 

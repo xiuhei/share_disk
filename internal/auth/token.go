@@ -30,6 +30,7 @@ type TokenClaims struct {
 	SessionID string `json:"session_id"`
 	Scope     string `json:"scope,omitempty"`
 	FileID    string `json:"file_id,omitempty"`
+	Origin    string `json:"origin,omitempty"`
 }
 
 // TokenManager signs (server) or verifies (agent) access tokens using Ed25519.
@@ -162,7 +163,14 @@ func (m *TokenManager) GenerateShareAccessToken(userID, localFileID, shareID str
 	return m.generateToken(userID, shareID, shareID, "share_download", localFileID, ttl)
 }
 
-func (m *TokenManager) generateToken(userID, deviceID, sessionID, scope, fileID string, ttl time.Duration) (string, error) {
+func (m *TokenManager) GenerateBrowserDownloadToken(userID, localFileID, sessionID, origin string) (string, error) {
+	if userID == "" || localFileID == "" || sessionID == "" || origin == "" {
+		return "", errors.New("browser download requires file, session and origin")
+	}
+	return m.generateToken(userID, sessionID, sessionID, "browser_download", localFileID, time.Minute, origin)
+}
+
+func (m *TokenManager) generateToken(userID, deviceID, sessionID, scope, fileID string, ttl time.Duration, origin ...string) (string, error) {
 	if m.signKey == nil {
 		return "", errors.New("token manager has no signing key (verify-only)")
 	}
@@ -182,6 +190,9 @@ func (m *TokenManager) generateToken(userID, deviceID, sessionID, scope, fileID 
 		SessionID: sessionID,
 		Scope:     scope,
 		FileID:    fileID,
+	}
+	if len(origin) > 0 {
+		claims.Origin = origin[0]
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)

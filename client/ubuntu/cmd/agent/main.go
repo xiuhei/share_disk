@@ -6,9 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/agent"
+	agentapp "github.com/share-disk/share-disk/client/agent/app"
 	"github.com/share-disk/share-disk/internal/config"
 	"github.com/share-disk/share-disk/internal/logging"
 	"github.com/share-disk/share-disk/internal/version"
@@ -29,18 +28,11 @@ func main() {
 
 	migrationsDir := os.Getenv("SHARE_DISK_SQLITE_MIGRATIONS_DIR")
 	if migrationsDir == "" {
-		migrationsDir = "client/ubuntu/migrations/sqlite"
+		migrationsDir = "client/agent/migrations/sqlite"
 	}
 
-	a, err := agent.New(cfg, migrationsDir)
-	if err != nil {
-		logger.Error("Failed to start agent", "error", err)
-		os.Exit(1)
-	}
-	defer a.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	logger.Info("Starting device agent",
 		"version", version.Get().Version,
@@ -53,30 +45,9 @@ func main() {
 		"desktop_ui_address", cfg.Agent.DesktopUIAddress(),
 	)
 
-	serveErr := make(chan error, 1)
-	go func() {
-		serveErr <- a.Run(ctx)
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case sig := <-quit:
-		logger.Info("Shutting down device agent", "signal", sig.String())
-		cancel()
-	case err := <-serveErr:
-		if err != nil {
-			logger.Error("Agent IPC server stopped", "error", err)
-			os.Exit(1)
-		}
+	if err := agentapp.Run(ctx, cfg, migrationsDir); err != nil {
+		logger.Error("Device agent stopped", "error", err)
+		os.Exit(1)
 	}
-
-	select {
-	case <-serveErr:
-	case <-time.After(10 * time.Second):
-		logger.Warn("Timed out waiting for agent shutdown")
-	}
-
 	logger.Info("Device agent exited")
 }

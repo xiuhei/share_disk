@@ -10,11 +10,18 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
+import api from '../../services/api'
+import { useAction } from '../../hooks/useResource'
+import ResourceState from '../../components/ResourceState'
 
 export default function SettingsPage() {
   const { isDark, toggle } = useTheme()
   const { user, logout } = useAuth()
   const [activeSection, setActiveSection] = useState('account')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [message, setMessage] = useState('')
+  const action = useAction()
 
   const sections = [
     { key: 'account', label: '账户设置', icon: User },
@@ -24,6 +31,8 @@ export default function SettingsPage() {
 
   return (
     <div className="page-shell">
+      <ResourceState error={action.error} />
+      {message && <p role="status" className="mb-3 text-primary-700">{message}</p>}
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden sm:flex-row sm:gap-6">
         {/* Sidebar */}
         <div className="w-full flex-shrink-0 overflow-x-auto sm:w-48">
@@ -58,24 +67,14 @@ export default function SettingsPage() {
                     </label>
                     <input
                       type="text"
-                      defaultValue={user?.username || ''}
+                      value={user?.username || ''}
+                      readOnly
                       className="input"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                      邮箱
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="请输入邮箱"
-                      className="input"
-                    />
-                  </div>
-                  <button className="btn btn-primary">
-                    <Save size={16} />
-                    保存更改
-                  </button>
+                  <label className="block text-sm font-medium">当前密码<input type="password" autoComplete="current-password" className="input mt-2" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} /></label>
+                  <label className="block text-sm font-medium">新密码<input type="password" autoComplete="new-password" className="input mt-2" value={newPassword} onChange={event => setNewPassword(event.target.value)} placeholder="至少 8 位" /></label>
+                  <button className="btn btn-primary" disabled={!currentPassword || newPassword.length < 8 || action.isPending} onClick={() => action.mutate(() => api.changePassword(currentPassword,newPassword), { onSuccess: () => { setCurrentPassword(''); setNewPassword(''); setMessage('密码已修改，其他会话已注销。') } })}><Save size={16} />修改密码</button>
                 </div>
               </div>
 
@@ -91,7 +90,7 @@ export default function SettingsPage() {
 
           {activeSection === 'notifications' && (
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">通知设置</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">通知设置</h3><p className="app-muted mb-3 text-sm">通知服务尚未启用。</p>
               <div className="space-y-4">
                 {[
                   { label: '上传完成通知', description: '文件上传完成后发送通知' },
@@ -105,7 +104,7 @@ export default function SettingsPage() {
                       <div className="text-sm text-gray-500 dark:text-gray-400">{item.description}</div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
-                      <input type="checkbox" defaultChecked className="sr-only peer" />
+                      <input type="checkbox" disabled title="通知服务尚未启用" className="sr-only peer" />
                       <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:ring-2 peer-focus:ring-primary-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-400"></div>
                     </label>
                   </div>

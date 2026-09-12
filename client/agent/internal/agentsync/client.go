@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/localapi"
-	"github.com/share-disk/share-disk/client/ubuntu/internal/storage"
-	storagecatalog "github.com/share-disk/share-disk/client/ubuntu/internal/storage/catalog"
+	"github.com/share-disk/share-disk/client/agent/internal/localapi"
+	"github.com/share-disk/share-disk/client/agent/internal/storage"
+	storagecatalog "github.com/share-disk/share-disk/client/agent/internal/storage/catalog"
 )
 
 var errTransferCanceled = errors.New("transfer canceled")
@@ -42,6 +42,7 @@ type Client struct {
 	controlURL        string
 	endpoint          string
 	peerID            string
+	publicKey         []byte
 	deviceName        string
 	syncInterval      time.Duration
 	heartbeatInterval time.Duration
@@ -65,20 +66,22 @@ type Status struct {
 	Failed      int64 `json:"failed"`
 }
 
-// These wire types are intentionally client-owned. The Ubuntu client depends
+// These wire types are intentionally client-owned. The shared Agent depends
 // on the Control API contract, not on server implementation packages.
 type registerDeviceRequest struct {
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
-	PeerID   string `json:"peer_id"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
+	PublicKey []byte `json:"public_key"`
+	PeerID    string `json:"peer_id"`
 }
 
 type enrollDeviceRequest struct {
-	Account  string `json:"account"`
-	Password string `json:"password"`
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
-	PeerID   string `json:"peer_id"`
+	Account   string `json:"account"`
+	Password  string `json:"password"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
+	PublicKey []byte `json:"public_key"`
+	PeerID    string `json:"peer_id"`
 }
 
 type refreshRequest struct {
@@ -93,6 +96,7 @@ type authResponse struct {
 }
 
 type deviceCommand struct {
+	Attempt int             `json:"attempt"`
 	ID      string          `json:"id"`
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
@@ -124,8 +128,8 @@ type completeTransferRequest struct {
 	SHA256          string `json:"sha256"`
 }
 
-func New(db *sql.DB, controlURL, endpoint, peerID, deviceName string, interval, heartbeatInterval time.Duration) *Client {
-	return &Client{db: db, repo: localapi.NewRepository(db), http: &http.Client{Timeout: 15 * time.Second}, transferHTTP: &http.Client{Timeout: 9 * time.Minute}, controlURL: strings.TrimRight(controlURL, "/"), endpoint: strings.TrimRight(endpoint, "/"), peerID: peerID, deviceName: deviceName, syncInterval: interval, heartbeatInterval: heartbeatInterval}
+func New(db *sql.DB, controlURL, endpoint, peerID string, publicKey []byte, deviceName string, interval, heartbeatInterval time.Duration) *Client {
+	return &Client{db: db, repo: localapi.NewRepository(db), http: &http.Client{Timeout: 15 * time.Second}, transferHTTP: &http.Client{Timeout: 9 * time.Minute}, controlURL: strings.TrimRight(controlURL, "/"), endpoint: strings.TrimRight(endpoint, "/"), peerID: peerID, publicKey: append([]byte(nil), publicKey...), deviceName: deviceName, syncInterval: interval, heartbeatInterval: heartbeatInterval}
 }
 
 // Provision registers this physical Agent under the authenticated caller's
@@ -147,7 +151,7 @@ func (c *Client) Provision(ctx context.Context, callerAuthorization, callerUserI
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	body := registerDeviceRequest{Name: c.deviceName, Platform: "linux", PeerID: c.peerID}
+	body := registerDeviceRequest{Name: c.deviceName, Platform: "linux", PublicKey: c.publicKey, PeerID: c.peerID}
 	var auth authResponse
 	status, _, err := c.request(ctx, http.MethodPost, "/v1/devices/register", callerAuthorization, body, &auth)
 	if err != nil {
@@ -168,7 +172,7 @@ func (c *Client) Enroll(ctx context.Context, account, password string) error {
 	if account == "" || password == "" {
 		return errors.New("account and password are required")
 	}
-	request := enrollDeviceRequest{Account: account, Password: password, Name: c.deviceName, Platform: "linux", PeerID: c.peerID}
+	request := enrollDeviceRequest{Account: account, Password: password, Name: c.deviceName, Platform: "linux", PublicKey: c.publicKey, PeerID: c.peerID}
 	var auth authResponse
 	status, _, err := c.request(ctx, http.MethodPost, "/v1/auth/enroll", "", request, &auth)
 	if err != nil {
@@ -317,7 +321,7 @@ func (c *Client) executeOneDeviceCommand(ctx context.Context) {
 			message = message[:500]
 		}
 	}
-	_, _, _ = c.authorizedRequest(ctx, http.MethodPost, "/v1/device-commands/"+url.PathEscape(command.ID)+"/finish", map[string]interface{}{"success": applyErr == nil, "error": message}, nil)
+	_, _, _ = c.authorizedRequest(ctx, http.MethodPost, "/v1/device-commands/"+url.PathEscape(command.ID)+"/finish", map[string]interface{}{"attempt": command.Attempt, "success": applyErr == nil, "error": message}, nil)
 }
 
 func (c *Client) applyDeviceCommand(ctx context.Context, command deviceCommand) error {

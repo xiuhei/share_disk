@@ -416,9 +416,10 @@ func (s *SQLiteStore) CreateObjectInTransaction(tx *sql.Tx, hash Hash, size int6
 	return nil
 }
 
-// SaveChunks persists the chunk manifest for an object, replacing any existing
-// chunks for the same object.
-func (s *SQLiteStore) SaveChunks(hash Hash, chunks []ChunkInfo) error {
+// FinalizeObject atomically stores the canonical chunk manifest and moves an
+// imported object to READY. The filesystem rename happens before this boundary;
+// startup recovery can safely retry if the process exits before commit.
+func (s *SQLiteStore) FinalizeObject(hash Hash, chunks []ChunkInfo, manifestDigest [32]byte) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -436,6 +437,23 @@ func (s *SQLiteStore) SaveChunks(hash Hash, chunks []ChunkInfo) error {
 		`, hash.String(), c.Index, c.Offset, c.Size, c.Hash[:]); err != nil {
 			return fmt.Errorf("failed to insert chunk %d: %w", c.Index, err)
 		}
+	}
+	now := nowTimestamp()
+	result, err := tx.Exec(`
+		UPDATE local_objects
+		SET status = ?, last_verified_at = ?, manifest_version = 1,
+			manifest_digest = ?, updated_at = ?
+		WHERE id = ?
+	`, string(ObjectStatusReady), now, manifestDigest[:], now, hash.String())
+	if err != nil {
+		return fmt.Errorf("failed to finalize object manifest: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to inspect finalized object: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("object not found while finalizing: %s", hash.String())
 	}
 
 	return tx.Commit()

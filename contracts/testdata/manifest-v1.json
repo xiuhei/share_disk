@@ -1,0 +1,26 @@
+{
+  "name": "two-chunk-partial-tail",
+  "version": 1,
+  "object_size": 6,
+  "chunk_size": 4,
+  "object_data_hex": "616263646566",
+  "object_hash": "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721",
+  "chunks": [
+    {
+      "index": 0,
+      "offset": 0,
+      "size": 4,
+      "data_hex": "61626364",
+      "hash": "88d4266fd4e6338d13b845fcf289579d209c897823b9217da3e161936f031589"
+    },
+    {
+      "index": 1,
+      "offset": 4,
+      "size": 2,
+      "data_hex": "6566",
+      "hash": "4ca669ac3713d1f4aea07dae8dcc0d1c9867d27ea82a3ba4e6158a42206f959b"
+    }
+  ],
+  "canonical_hex": "53444d460001010000000000000000060000000400000002bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c47210000000000000000000000000000000488d4266fd4e6338d13b845fcf289579d209c897823b9217da3e161936f031589000000010000000000000004000000024ca669ac3713d1f4aea07dae8dcc0d1c9867d27ea82a3ba4e6158a42206f959b",
+  "manifest_digest": "5f471dd3266cda5d000188bad27a55ec2bd34b2a591458f01c96731ce054acc1"
+}

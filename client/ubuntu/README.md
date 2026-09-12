@@ -1,6 +1,6 @@
 # Share Disk Ubuntu 客户端
 
-Ubuntu 客户端由系统级 Agent、CLI 和仅本机可访问的桌面管理界面组成。它负责
+Ubuntu 客户端由系统级 Agent、CLI 和仅本机可访问的桌面管理界面组成。跨平台核心、CLI 与 SQLite 迁移位于 `client/agent/`，本目录只保留 Ubuntu 启动器及打包。它负责
 SQLite 元数据、经过校验的文件内容、LAN 发现与传输，并通过 `.deb` 独立交付，
 不属于 Docker Compose 服务端栈。
 

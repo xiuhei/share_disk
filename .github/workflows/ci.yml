@@ -1,0 +1,84 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929
+        env:
+          POSTGRES_PASSWORD: isolated-ci-test
+          POSTGRES_DB: sharedisk_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SHARE_DISK_TEST_POSTGRES: postgres://postgres:isolated-ci-test@localhost:5432/sharedisk_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.8
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "36.0"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+      - run: make contract architecture
+      - run: go build ./...
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.8
+          cache: true
+      - run: go test ./internal/p2p ./client/windows/...
+      - run: go build ./client/windows/cmd/share-disk
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: client/web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: ./client/android/gradlew -p client/android --no-daemon testDebugUnitTest assembleDebug lintDebug

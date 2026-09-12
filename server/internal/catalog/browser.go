@@ -156,29 +156,63 @@ func (r *Repository) DeleteManagedFolder(ctx context.Context, userID, folderID s
 	return ErrFolderNotFound
 }
 
-func (r *Repository) MoveFiles(ctx context.Context, userID, folderID string, fileIDs []string) error {
+func (r *Repository) MoveFiles(ctx context.Context, userID, folderID string, fileIDs []string, expectedVersions ...map[string]int64) error {
 	if len(fileIDs) == 0 || len(fileIDs) > 500 {
 		return fmt.Errorf("%w: file_ids", ErrInvalidRequest)
+	}
+	if _, err := uuid.Parse(folderID); err != nil {
+		return fmt.Errorf("%w: folder_id", ErrInvalidRequest)
+	}
+	for _, id := range fileIDs {
+		if _, err := uuid.Parse(id); err != nil {
+			return fmt.Errorf("%w: file_ids", ErrInvalidRequest)
+		}
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	var folderOK bool
-	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM folders WHERE id=$1 AND user_id=$2 AND status='active')`, folderID, userID).Scan(&folderOK); err != nil || !folderOK {
-		return ErrFolderNotFound
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, userID); err != nil {
+		return err
 	}
+	var target string
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM folders WHERE id=$1 AND user_id=$2 AND status='active' FOR SHARE`, folderID, userID).Scan(&target); err != nil {
+		if err == sql.ErrNoRows {
+			return ErrFolderNotFound
+		}
+		return err
+	}
+	seen := make(map[string]bool)
 	for _, id := range fileIDs {
-		result, err := tx.ExecContext(ctx, `UPDATE file_entries SET folder_id=$1,version=version+1,updated_at=NOW() WHERE id=$2 AND user_id=$3 AND status='active'`, folderID, id, userID)
-		if err != nil {
+		if seen[id] {
+			return fmt.Errorf("%w: duplicate file id", ErrInvalidRequest)
+		}
+		seen[id] = true
+		var version int64
+		var oldFolder string
+		if err := tx.QueryRowContext(ctx, `SELECT version,folder_id FROM file_entries WHERE id=$1 AND user_id=$2 AND status='active' FOR UPDATE`, id, userID).Scan(&version, &oldFolder); err != nil {
+			if err == sql.ErrNoRows {
+				return ErrFileNotFound
+			}
+			return err
+		}
+		if len(expectedVersions) > 0 {
+			if expected, ok := expectedVersions[0][id]; ok && expected != version {
+				return ErrVersionConflict
+			}
+		}
+		if oldFolder == folderID {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE file_entries SET folder_id=$1,version=version+1,updated_at=NOW() WHERE id=$2 AND user_id=$3`, folderID, id, userID); err != nil {
 			if isUniqueViolation(err) {
 				return ErrNameConflict
 			}
 			return err
 		}
-		if n, _ := result.RowsAffected(); n != 1 {
-			return ErrFileNotFound
+		if err := appendEvent(ctx, tx, userID, "file.move", id, version+1); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()

@@ -30,7 +30,7 @@ try {
     $env:GOARCH = "amd64"
     go build -trimpath -ldflags $ldflags -o $exePath ./client/windows/cmd/share-disk
     if ($LASTEXITCODE -ne 0) { throw "Windows client build failed" }
-    Copy-Item -Path "client/ubuntu/migrations/sqlite/*.sql" -Destination (Join-Path $stagePath "migrations/sqlite")
+    Copy-Item -Path "client/agent/migrations/sqlite/*.sql" -Destination (Join-Path $stagePath "migrations/sqlite")
     Copy-Item -LiteralPath "client/windows/README.md" -Destination (Join-Path $stagePath "README.md")
 } finally {
     Pop-Location

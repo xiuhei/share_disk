@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/share-disk/share-disk/client/ubuntu/internal/storage/hasher"
+	"github.com/share-disk/share-disk/client/agent/internal/storage/hasher"
+	objectmanifest "github.com/share-disk/share-disk/internal/manifest"
 )
 
 // DefaultChunkSize is the fixed V1 chunk size (4 MiB).
@@ -67,6 +68,12 @@ func (s *StagedImport) ChunkSize() int64 { return s.chunkSize }
 
 // Chunks returns the per-chunk hashes.
 func (s *StagedImport) Chunks() []ChunkInfo { return s.chunks }
+
+// Manifest returns the canonical transport-independent object manifest.
+func (s *StagedImport) Manifest() (*objectmanifest.Manifest, error) {
+	value := &hasher.Manifest{Hash: s.hash, Size: s.size, ChunkSize: s.chunkSize, ChunkCount: len(s.chunks), Chunks: s.chunks}
+	return value.Canonical()
+}
 
 // Discard removes the staged `.part` file. It is safe to call after Commit
 // (the file no longer exists, which is ignored).

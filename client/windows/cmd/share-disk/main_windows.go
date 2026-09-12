@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	ubuntuapp "github.com/share-disk/share-disk/client/ubuntu/app"
+	ubuntuapp "github.com/share-disk/share-disk/client/agent/app"
 	"github.com/share-disk/share-disk/internal/config"
 )
 

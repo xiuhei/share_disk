@@ -14,6 +14,7 @@ import (
 	"github.com/share-disk/share-disk/internal/database"
 	"github.com/share-disk/share-disk/internal/logging"
 	"github.com/share-disk/share-disk/internal/version"
+	"github.com/share-disk/share-disk/server/internal/catalog"
 	"github.com/share-disk/share-disk/server/internal/health"
 
 	_ "github.com/lib/pq"
@@ -117,30 +118,45 @@ func main() {
 	}
 }
 
-// runWorker runs the worker's periodic loop until ctx is cancelled. Business
-// sub-loops (task claiming, outbox, redundancy, GC) are not yet implemented;
-// the loop verifies the database/schema each cycle so the readiness probe and
-// startup failure behavior are real rather than a silent no-op.
+// runWorker periodically applies retention through the authoritative catalog
+// transaction. Agents claim durable device commands independently.
 func runWorker(ctx context.Context, logger *logging.Logger, db *sql.DB, healthManager *health.Manager, cycleInterval time.Duration) {
 	if err := db.Ping(); err != nil {
 		logger.Error("Worker initial database check failed", "error", err)
 		return
 	}
 
+	if cycleInterval <= 0 {
+		cycleInterval = 30 * time.Second
+	}
 	ticker := time.NewTicker(cycleInterval)
 	defer ticker.Stop()
+	repo := catalog.NewRepository(db)
+	cycle := func() {
+		result := healthManager.RunChecks()
+		if result.Status == health.StatusDown {
+			logger.Warn("Worker dependency checks failed", "checks", result.Checks)
+			return
+		}
+		cycleCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		count, err := repo.PurgeExpiredTrash(cycleCtx, 100)
+		if err != nil {
+			logger.Error("Trash retention cycle failed", "processed", count, "error", err)
+			return
+		}
+		if count > 0 {
+			logger.Info("Trash retention commands committed", "processed", count)
+		}
+	}
+	cycle()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			result := healthManager.RunChecks()
-			if result.Status == health.StatusDown {
-				logger.Warn("Worker dependency checks failed", "checks", result.Checks)
-				continue
-			}
-			logger.Debug("Worker dependency checks passed")
+			cycle()
 		}
 	}
 }

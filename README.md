@@ -4,7 +4,7 @@ A personal distributed cloud drive system that keeps file contents on user devic
 
 ## Project Status
 
-**Status: LAN V1 implementation candidate — Android hardware acceptance is still required before release.**
+**Status: E0 engineering foundation in progress; the existing LAN V1 path remains a release candidate pending Android hardware acceptance.**
 
 The repository contains one deliberately narrow vertical slice: a Docker Compose identity control plane, an Ubuntu Agent that persists verified object bytes and LAN metadata, and an Android 10+ APK that uploads through tus and downloads through HTTP Range using the system file picker. The broader distributed-drive roadmap is outside the current release scope.
 
@@ -13,14 +13,14 @@ LAN V1 evidence and remaining release boundary:
 - DNS-SD/mDNS discovery provides only a candidate address; Android must still authenticate with the Control Server token.
 - A target Android device is not attached to this checkout, so physical Wi-Fi, SAF-provider and process/network-interruption acceptance remains unverified.
 - LAN V1 supports one account, one Ubuntu storage Agent and its first Android device. Additional device registration, global file metadata sync, public networking, Relay, Windows and multi-source transfer remain frozen.
-- The broader control/worker/P2P packages are still partial and must not be presented as completed product features.
+- The shared desktop Agent and a two-node libp2p transfer prototype now exist, but control-plane ticket integration, Relay/public-network validation and the worker remain partial and must not be presented as completed product features.
 
 ## Quick Start
 
 ### Prerequisites
 
 - Product deployment: Docker Engine, Docker Compose plugin and OpenSSL on Ubuntu 22.04/24.04. PostgreSQL runs in the server stack; the host-installed Ubuntu Agent owns its embedded SQLite database.
-- Source development: Go 1.26.6+; Android builds additionally require JDK 17 and Android SDK 35.
+- Source development: Go 1.26.8+ and Node.js 24.18.x/npm 11.x; Android builds additionally require JDK 17 and Android SDK 35.
 - Android 10+ device on the same trusted LAN; ADB is optional for side-loading.
 
 ### Build
@@ -56,7 +56,7 @@ make check          # production-source gate
 
 ### Configuration
 
-服务器配置模板为 [`conf/server.example.json`](conf/server.example.json)，实际配置固定为被 Git 忽略的 `conf/server.json`，涵盖 HTTP、PostgreSQL、日志、迁移、Worker、初始化令牌和签名私钥。服务器不再从 systemd 或 Compose 环境变量读取业务配置。Agent 属于 Ubuntu 客户端，继续使用下列 `SHARE_DISK_*` 配置：
+服务器配置模板为 [`conf/server.example.json`](conf/server.example.json)，实际配置固定为被 Git 忽略的 `conf/server.json`，涵盖 HTTP、PostgreSQL、日志、迁移、Worker、初始化令牌和签名私钥。服务器不再从 systemd 或 Compose 环境变量读取业务配置。桌面 Agent 继续使用下列 `SHARE_DISK_*` 配置：
 
 | Environment Variable | Description | Required for |
 |---------------------|-------------|-------------|
@@ -99,7 +99,7 @@ The system uses a "modular control service + per-device agent + libp2p data plan
 
 - **Control Server**: Stateless HTTP/WebSocket instances (stateless; partial)
 - **Control Worker**: Task scanning, outbox, redundancy, and GC (skeleton)
-- **Device Agent**: Ubuntu process managing SQLite, verified objects, local IPC and the opt-in authenticated LAN HTTP data path
+- **Device Agent**: Shared Go process managing SQLite, verified objects, local IPC and the opt-in authenticated LAN HTTP data path, hosted by Ubuntu and Windows launchers
 - **PostgreSQL**: Authoritative source for accounts, logical directory, devices, tasks, and events
 - **SQLite**: Local authority for agent state, chunk progress, and pending operations
 
@@ -107,10 +107,11 @@ The system uses a "modular control service + per-device agent + libp2p data plan
 
 - [`server/`](server/) contains the Docker control plane, PostgreSQL migrations and server deployment assets.
 - [`client/android/`](client/android/) contains the complete Android Gradle project.
-- [`client/ubuntu/`](client/ubuntu/) contains the Agent, CLI, SQLite migrations and Debian packaging source.
-- [`client/windows/`](client/windows/) reserves the Windows product boundary; implementation remains frozen for LAN V1.
+- [`client/agent/`](client/agent/) contains the cross-platform Agent core, CLI and SQLite migrations.
+- [`client/ubuntu/`](client/ubuntu/) contains the Ubuntu launcher and Debian packaging source.
+- [`client/windows/`](client/windows/) contains the Windows launcher and packaging source.
 - [`contracts/`](contracts/) contains cross-process OpenAPI and Protobuf contracts.
-- [`internal/`](internal/) contains Go infrastructure shared by the server and Ubuntu client; product-private packages stay below their owning product.
+- [`internal/`](internal/) contains Go infrastructure shared by the server and clients; product-private packages stay below their owning product.
 - [`release/`](release/) is the ignored output location for signed/versioned `.apk`, `.deb` and future Windows installers. Temporary files belong in `build/`.
 
 ## Contracts and client guide
